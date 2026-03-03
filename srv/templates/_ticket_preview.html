@@ -1,0 +1,14 @@
+{{define "ticket-preview"}}
+<div class="ticket-preview" id="preview-{{.ID}}">
+  <div class="preview-section preview-description">
+    <div class="preview-label">Original message</div>
+    <div class="preview-body">{{.Description}}</div>
+  </div>
+  {{if .LatestReply}}
+  <div class="preview-section preview-reply{{if .LatestReply.Incoming}} preview-incoming{{else}} preview-outgoing{{end}}">
+    <div class="preview-label">Latest reply &middot; {{.LatestReply.SenderName}} &middot; {{.LatestReply.TimeSince}}</div>
+    <div class="preview-body">{{.LatestReply.Body}}</div>
+  </div>
+  {{end}}
+</div>
+{{end}}

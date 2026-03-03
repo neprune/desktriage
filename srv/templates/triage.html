@@ -1,0 +1,21 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="triage">
+  <header class="page-header">
+    <h1><i data-lucide="inbox"></i> Triage</h1>
+    <p class="page-subtitle">{{len .Tickets}} tickets need processing</p>
+  </header>
+
+  {{if .Tickets}}
+  <div class="ticket-list">
+    {{range .Tickets}}{{template "triage-card" .}}{{end}}
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <p>All caught up! No tickets need triage.</p>
+    <p>New unprocessed tickets will appear here.</p>
+  </div>
+  {{end}}
+</div>
+{{end}}

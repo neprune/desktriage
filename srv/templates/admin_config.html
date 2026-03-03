@@ -1,0 +1,87 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="admin-config">
+  <header class="admin-header">
+    <h1><i data-lucide="settings"></i> Settings</h1>
+    <p class="admin-subtitle">Manage runtime configuration values stored in the database.</p>
+  </header>
+
+  {{if .Saved}}
+  <div class="flash flash-success">Configuration saved successfully.</div>
+  {{end}}
+  {{if .Error}}
+  <div class="flash flash-error">Error: {{.Error}}</div>
+  {{end}}
+
+  <form method="POST" action="/admin/config" class="config-form">
+    {{range .Keys}}
+    <div class="config-field">
+      <label for="cfg_{{.Key}}">{{.Key}}</label>
+      <p class="config-desc">{{.Description}}{{if .Required}} <span class="config-required">required</span>{{end}}</p>
+      <input type="{{if .Sensitive}}password{{else}}text{{end}}"
+             id="cfg_{{.Key}}"
+             name="cfg_{{.Key}}"
+             value="{{index $.Values .Key}}"
+             {{if .Required}}required{{end}}
+             autocomplete="off"
+             class="config-input">
+    </div>
+    {{end}}
+    <div class="config-actions">
+      <button type="submit" class="btn btn-save">Save</button>
+      <a href="/" class="btn btn-cancel">Cancel</a>
+    </div>
+  </form>
+
+  <section class="sprint-anchors">
+    <h2><i data-lucide="timer"></i> Sprint Anchors</h2>
+    <p class="admin-subtitle">Define sprint start dates to calculate which sprint any date falls in. Sprints are numbered 1–26 per year.{{if .CurrentSprint}} Current sprint: <strong>{{.CurrentSprint}}</strong>.{{end}}</p>
+
+    {{if .SprintAnchors}}
+    <table class="anchor-table">
+      <thead>
+        <tr><th>Year</th><th>Sprint</th><th>Start Date</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{range .SprintAnchors}}
+        <tr>
+          <td>{{.Year}}</td>
+          <td>S{{.Number}}</td>
+          <td>{{.StartDate}} <span class="text-muted">({{.DisplayDate}})</span></td>
+          <td>
+            <button class="btn btn-sm btn-danger"
+                    hx-delete="/admin/sprint-anchor/{{.Year}}/{{.Number}}"
+                    hx-confirm="Delete anchor S{{.Number}} ({{.Year}})?"                    hx-target="body"
+                    hx-swap="innerHTML"
+                    onclick="event.preventDefault(); if(confirm('Delete anchor S{{.Number}} ({{.Year}})?')) { fetch('/admin/sprint-anchor/{{.Year}}/{{.Number}}', {method:'DELETE'}).then(()=>window.location='/admin/config?saved=1') }"
+            >✕</button>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty-state">No sprint anchors defined. Add one to enable sprint tracking.</p>
+    {{end}}
+
+    <form method="POST" action="/admin/sprint-anchor" class="anchor-form">
+      <div class="anchor-form-fields">
+        <div class="config-field">
+          <label for="anchor_year">Year</label>
+          <input type="number" id="anchor_year" name="year" value="{{.CurrentYear}}" min="2020" max="2100" required class="config-input config-input-sm">
+        </div>
+        <div class="config-field">
+          <label for="anchor_number">Sprint #</label>
+          <input type="number" id="anchor_number" name="sprint_number" min="1" max="26" required placeholder="1–26" class="config-input config-input-sm">
+        </div>
+        <div class="config-field">
+          <label for="anchor_date">Start Date</label>
+          <input type="date" id="anchor_date" name="start_date" required class="config-input">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-save">Add Anchor</button>
+    </form>
+  </section>
+</div>
+{{end}}

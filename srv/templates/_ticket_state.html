@@ -1,0 +1,92 @@
+{{define "ticket-state"}}
+<div class="state-panel">
+  <h3 class="state-panel-title">Local State</h3>
+
+  {{/* Today toggle */}}
+  <div class="state-row">
+    <label class="state-label"><i data-lucide="star"></i> Today</label>
+    <button class="btn btn-state{{if .Today}} btn-state-active{{end}}"
+            hx-put="/ticket/{{.ID}}/state"
+            hx-vals='{"field": "today", "value": "{{if .Today}}0{{else}}1{{end}}", "from": "ticket"}'
+            hx-target="#ticket-state"
+            hx-swap="innerHTML">{{if .Today}}Yes <i data-lucide="check"></i>{{else}}No{{end}}</button>
+  </div>
+
+  {{/* Blocked toggle */}}
+  <div class="state-row">
+    <label class="state-label"><i data-lucide="ban"></i> Blocked</label>
+    <button class="btn btn-state{{if .Blocked}} btn-state-active btn-state-blocked{{end}}"
+            hx-put="/ticket/{{.ID}}/state"
+            hx-vals='{"field": "blocked", "value": "{{if .Blocked}}0{{else}}1{{end}}", "from": "ticket"}'
+            hx-target="#ticket-state"
+            hx-swap="innerHTML">{{if .Blocked}}Yes <i data-lucide="check"></i>{{else}}No{{end}}</button>
+  </div>
+
+  {{/* Priority */}}
+  <div class="state-row">
+    <label class="state-label"><i data-lucide="pin"></i> Priority</label>
+    <div class="state-priority-btns">
+      <button class="btn btn-state-sm{{if eq .LocalPriority 0}} btn-state-active{{end}}"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "priority", "value": "0", "from": "ticket"}'
+              hx-target="#ticket-state"
+              hx-swap="innerHTML">-</button>
+      <button class="btn btn-state-sm{{if eq .LocalPriority 1}} btn-state-active{{end}}"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "priority", "value": "1", "from": "ticket"}'
+              hx-target="#ticket-state"
+              hx-swap="innerHTML">1</button>
+      <button class="btn btn-state-sm{{if eq .LocalPriority 2}} btn-state-active{{end}}"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "priority", "value": "2", "from": "ticket"}'
+              hx-target="#ticket-state"
+              hx-swap="innerHTML">2</button>
+      <button class="btn btn-state-sm{{if eq .LocalPriority 3}} btn-state-active{{end}}"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "priority", "value": "3", "from": "ticket"}'
+              hx-target="#ticket-state"
+              hx-swap="innerHTML">3</button>
+    </div>
+  </div>
+
+  {{/* Note */}}
+  <div class="state-row state-row-col">
+    <label class="state-label"><i data-lucide="sticky-note"></i> Note</label>
+    {{if .Note}}
+    <p class="state-note-text">{{.Note}}</p>
+    {{end}}
+    <input type="text" class="input-note" value="{{.Note}}" placeholder="Add a note…"
+           hx-put="/ticket/{{.ID}}/state"
+           hx-vals='{"field": "note", "from": "ticket"}'
+           hx-target="#ticket-state"
+           hx-swap="innerHTML"
+           hx-trigger="keyup[key=='Enter']"
+           hx-include="this"
+           name="value">
+  </div>
+
+  {{/* Review date */}}
+  <div class="state-row state-row-col">
+    <label class="state-label"><i data-lucide="calendar"></i> Review After</label>
+    <input type="date" class="input-review"
+           value="{{if .ReviewAfter}}{{.ReviewAfter.Format "2006-01-02"}}{{end}}"
+           hx-put="/ticket/{{.ID}}/state"
+           hx-vals='{"field": "review_after", "from": "ticket"}'
+           hx-target="#ticket-state"
+           hx-swap="innerHTML"
+           hx-trigger="change"
+           hx-include="this"
+           name="value">
+    {{if .ReviewAfter}}
+    <div class="state-review-info">
+      <span class="badge badge-review">{{.ReviewAfter.Format "Jan 2, 2006"}}</span>
+      <button class="btn btn-sm btn-clear"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "review_after", "value": "", "from": "ticket"}'
+              hx-target="#ticket-state"
+              hx-swap="innerHTML">Clear</button>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

@@ -1,0 +1,59 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="dashboard">
+  <header class="dashboard-header">
+    <h1>Dashboard</h1>
+    <p class="dashboard-subtitle">{{.TotalCount}} tickets &middot; {{.TodayCount}} flagged for today{{if .ReviewNowCount}} &middot; {{.ReviewNowCount}} due for review{{end}}</p>
+  </header>
+
+  {{if .ReviewNowTickets}}
+  <section class="ticket-section section-review-now">
+    <h2><i data-lucide="calendar"></i> Review Now ({{len .ReviewNowTickets}})</h2>
+    <div class="ticket-list">
+      {{range .ReviewNowTickets}}{{template "ticket-card" .}}{{end}}
+    </div>
+  </section>
+  {{end}}
+
+  <section class="ticket-section">
+    <h2>My Tickets ({{len .AssignedTickets}})</h2>
+    {{if .AssignedTickets}}
+    <div class="ticket-list">
+      {{range .AssignedTickets}}{{template "ticket-card" .}}{{end}}
+    </div>
+    {{else}}
+    <p class="empty-state">No assigned tickets.</p>
+    {{end}}
+  </section>
+
+  <section class="ticket-section">
+    <h2>Unassigned ({{len .UnassignedTickets}})</h2>
+    {{if .UnassignedTickets}}
+    <div class="ticket-list">
+      {{range .UnassignedTickets}}{{template "ticket-card" .}}{{end}}
+    </div>
+    {{else}}
+    <p class="empty-state">No unassigned tickets.</p>
+    {{end}}
+  </section>
+
+  {{if .ForLaterTickets}}
+  <section class="ticket-section section-for-later">
+    <h2><i data-lucide="timer"></i> For Later ({{len .ForLaterTickets}})</h2>
+    <div class="ticket-list">
+      {{range .ForLaterTickets}}{{template "ticket-card" .}}{{end}}
+    </div>
+  </section>
+  {{end}}
+
+  {{if .HistoricTickets}}
+  <section class="ticket-section section-historic">
+    <h2><i data-lucide="archive"></i> Historic ({{len .HistoricTickets}})</h2>
+    <div class="ticket-list">
+      {{range .HistoricTickets}}{{template "ticket-card" .}}{{end}}
+    </div>
+  </section>
+  {{end}}
+</div>
+{{end}}

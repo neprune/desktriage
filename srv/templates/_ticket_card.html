@@ -1,0 +1,86 @@
+{{define "ticket-card"}}
+<div class="ticket-card{{if eq .LastUpdater "client"}} needs-response{{end}}{{if .Blocked}} is-blocked{{end}}{{if .ReviewDeferred}} is-deferred{{end}}{{if .ReviewDue}} is-review-due{{end}}{{if and .SprintLabel (not .IsCurrentSprint)}} is-stale-sprint{{end}}"
+     id="ticket-{{.ID}}">
+  <div class="ticket-row ticket-row-main">
+    <span class="badge badge-status-{{.Status}}">{{.StatusLabel}}</span>
+    <a class="ticket-subject" href="/ticket/{{.ID}}"><span class="ticket-number">#{{.ID}}</span> {{.Subject}}</a>
+    <span class="ticket-company">{{.CompanyName}}</span>
+  </div>
+  <div class="ticket-row ticket-row-meta">
+    <span class="ticket-time">{{.TimeSince}}</span>
+    <span class="ticket-updater">{{if eq .LastUpdater "client"}}<i data-lucide="user"></i>{{else}}<i data-lucide="building-2"></i>{{end}}</span>
+    <span class="ticket-flags">
+      {{if gt .Priority 0}}<span class="badge badge-priority">#{{.Priority}}</span>{{end}}
+      {{if .Note}}<span title="{{.Note}}"><i data-lucide="sticky-note"></i></span>{{end}}
+    </span>
+    <span class="ticket-actions">
+      <button class="btn-icon{{if .Today}} active{{end}}"
+              title="{{if .Today}}Remove from today{{else}}Flag for today{{end}}"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "today", "value": "{{if .Today}}0{{else}}1{{end}}"{{if eq .ViewContext "focus"}}, "from": "focus"{{end}}}'
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="star"></i></button>
+      <button class="btn-icon{{if .Blocked}} active{{end}}"
+              title="{{if .Blocked}}Unblock{{else}}Mark blocked{{end}}"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "blocked", "value": "{{if .Blocked}}0{{else}}1{{end}}"}'
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="ban"></i></button>
+      <button class="btn-icon btn-note"
+              title="Edit note"
+              onclick="toggleNote(this)"><i data-lucide="sticky-note"></i></button>
+      <button class="btn-icon btn-review"
+              title="Set review date"
+              onclick="toggleReview(this)"><i data-lucide="calendar"></i></button>
+      {{if gt .Priority 0}}
+      <button class="btn-icon" title="Remove from queue"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "priority", "value": "0"}'
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="x"></i></button>
+      {{else}}
+      <button class="btn-icon" title="Add to queue"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "priority", "value": "1"}'
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="pin"></i></button>
+      {{end}}
+    </span>
+  </div>
+  {{if or .Today .Blocked .ReviewAfter .Note}}
+  <div class="ticket-row ticket-row-state">
+    {{if .Today}}<span class="badge badge-today">Today</span>{{end}}
+    {{if .Blocked}}<span class="badge badge-blocked">Blocked</span>{{end}}
+    {{if .ReviewAfter}}<span class="badge badge-review">Review: {{.ReviewAfter.Format "Jan 2"}}</span>{{end}}
+    {{if .Note}}<span class="ticket-note-preview" title="{{.Note}}">{{.Note}}</span>{{end}}
+  </div>
+  {{end}}
+  <div class="ticket-row ticket-row-edit ticket-note-edit" style="display:none">
+    <input type="text" class="input-note" value="{{.Note}}" placeholder="Add a note…"
+           hx-put="/ticket/{{.ID}}/state"
+           hx-vals='{"field": "note"}'
+           hx-target="#ticket-{{.ID}}"
+           hx-swap="outerHTML"
+           hx-trigger="keyup[key=='Enter']"
+           hx-include="this"
+           name="value">
+  </div>
+  <div class="ticket-row ticket-row-edit ticket-review-edit" style="display:none">
+    <input type="date" class="input-review" value="{{if .ReviewAfter}}{{.ReviewAfter.Format "2006-01-02"}}{{end}}"
+           hx-put="/ticket/{{.ID}}/state"
+           hx-vals='{"field": "review_after"}'
+           hx-target="#ticket-{{.ID}}"
+           hx-swap="outerHTML"
+           hx-trigger="change"
+           hx-include="this"
+           name="value">
+    {{if .ReviewAfter}}
+    <button class="btn btn-sm btn-clear"
+            hx-put="/ticket/{{.ID}}/state"
+            hx-vals='{"field": "review_after", "value": ""}'
+            hx-target="#ticket-{{.ID}}"
+            hx-swap="outerHTML">Clear</button>
+    {{end}}
+  </div>
+</div>
+{{end}}

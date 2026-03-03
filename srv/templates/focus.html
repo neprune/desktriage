@@ -1,0 +1,21 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="focus">
+  <header class="page-header">
+    <h1><i data-lucide="star"></i> Focus</h1>
+    <p class="page-subtitle">{{len .Tickets}} tickets for today</p>
+  </header>
+
+  {{if .Tickets}}
+  <div class="ticket-list">
+    {{range .Tickets}}{{template "ticket-card" .}}{{end}}
+  </div>
+  {{else}}
+  <div class="empty-state">
+    <p>No tickets flagged for today.</p>
+    <p>Use the <i data-lucide="star"></i> button on the <a href="/">dashboard</a> to flag tickets.</p>
+  </div>
+  {{end}}
+</div>
+{{end}}
