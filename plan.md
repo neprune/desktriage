@@ -10,7 +10,7 @@
 ## Architecture Overview
 
 ```
-Browser  ←→  Go server (:8000)
+Browser  ←→  Go server (:8086)
                 ├── HTML templates (dashboard, focus, triage, ticket views)
                 ├── SQLite (private state + cache)
                 └── Freshdesk API (proxied/cached)
@@ -265,5 +265,5 @@ api_cache (
 - [x] Responsive layout tweaks: ensure usable on wide monitors (max-width, readable line lengths)
 - [x] Add systemd service file, wire up `make build`
 - [x] Deploy: `sudo cp srv.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now srv`
-- [x] Smoke test deployed service via `https://aggtivity.exe.xyz:8000/`
+- [x] Smoke test deployed service via `http://localhost:8086/`
 - [x] Final commit: "Phase 6: polish, keyboard shortcuts, systemd deploy"

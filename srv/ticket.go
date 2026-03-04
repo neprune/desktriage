@@ -41,13 +41,13 @@ type TicketDetailData struct {
 	PageTitle   string // for <title> tag, e.g. "#6678: Grass area..."
 	TotalCount  int
 	TodayCount  int
-	TriageCount int
 
 	// Ticket fields
 	ID             int64
 	FreshdeskURL   string // link to ticket on Freshdesk
 	Subject        string
 	Description    template.HTML
+	Attachments    []freshdesk.Attachment // original ticket attachments
 	Status         int
 	StatusLabel    string
 	Priority       int
@@ -240,7 +240,7 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- Nav badge counts (lightweight) ----------------------------------
-	totalCount, todayCount, triageCount := s.fetchNavCounts(ctx)
+	totalCount, todayCount := s.fetchNavCounts(ctx)
 
 	// --- Sprint info ----------------------------------------------------
 	var sprintLabel string
@@ -260,11 +260,11 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 		PageTitle:      fmt.Sprintf("#%d: %s", ticket.ID, ticket.Subject),
 		TotalCount:     totalCount,
 		TodayCount:     todayCount,
-		TriageCount:    triageCount,
 		ID:             ticket.ID,
 		FreshdeskURL:   fmt.Sprintf("%s/a/tickets/%d", s.Config.FreshdeskURL, ticket.ID),
 		Subject:        ticket.Subject,
 		Description:    template.HTML(ticket.Description),
+		Attachments:    ticket.Attachments,
 		Status:         ticket.Status,
 		StatusLabel:    statusLabel(ticket.Status),
 		Priority:       ticket.Priority,
@@ -312,12 +312,13 @@ type PreviewReply struct {
 	Body       template.HTML
 	SenderName string
 	Incoming   bool
+	Private    bool
 	CreatedAt  time.Time
 	TimeSince  string
 }
 
 // HandleTicketPreview returns an HTML partial with the ticket description
-// and the most recent human reply for inline expansion on dashboard/triage.
+// and the most recent human reply for inline expansion on the dashboard.
 func (s *Server) HandleTicketPreview(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	ticketID, err := strconv.ParseInt(idStr, 10, 64)
@@ -372,14 +373,15 @@ func (s *Server) HandleTicketPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find latest human reply: walk backwards through conversations,
-	// skip private notes and auto-responses.
+	// skip auto-responses but include private notes.
 	for i := len(convos) - 1; i >= 0; i-- {
 		c := convos[i]
-		if c.Private {
+		// Skip auto-responses: outgoing replies created within 2 minutes of ticket creation.
+		if !c.Incoming && !c.Private && c.CreatedAt.Sub(ticket.CreatedAt) < 2*time.Minute {
 			continue
 		}
-		// Skip auto-responses: outgoing replies created within 2 minutes of ticket creation.
-		if !c.Incoming && c.CreatedAt.Sub(ticket.CreatedAt) < 2*time.Minute {
+		// Skip private notes that are auto-response logs.
+		if c.Private && strings.HasPrefix(c.BodyText, "Auto response sent:") {
 			continue
 		}
 		senderName := s.resolveContactName(ctx, c.UserID)
@@ -392,6 +394,7 @@ func (s *Server) HandleTicketPreview(w http.ResponseWriter, r *http.Request) {
 			Body:       template.HTML(c.Body),
 			SenderName: senderName,
 			Incoming:   c.Incoming,
+			Private:    c.Private,
 			CreatedAt:  c.CreatedAt,
 			TimeSince:  timeSince(c.CreatedAt),
 		}
@@ -473,51 +476,28 @@ func (s *Server) resolveContactName(ctx context.Context, contactID int64) string
 // fetchNavCounts returns lightweight badge counts for the nav bar.
 // It reuses cached dashboard data if available; otherwise returns zeros
 // to avoid forcing a full Freshdesk refresh.
-func (s *Server) fetchNavCounts(ctx context.Context) (total, today, triage int) {
+func (s *Server) fetchNavCounts(ctx context.Context) (total, today int) {
 	var tickets []freshdesk.Ticket
 	ok, _ := s.Cache.GetJSON(ctx, "tickets:dashboard", &tickets)
 	if !ok {
-		return 0, 0, 0
+		return 0, 0
 	}
 
 	// Load local states
 	dbStates, err := s.Queries.ListTicketStates(ctx)
 	if err != nil {
 		slog.Warn("list ticket states for nav counts", "error", err)
-		return len(tickets), 0, 0
-	}
-
-	stateMap := make(map[int64]*ticketLocalState, len(dbStates))
-	for _, st := range dbStates {
-		var ra *time.Time
-		if st.ReviewAfter != nil {
-			if t, pErr := time.Parse(time.RFC3339, *st.ReviewAfter); pErr == nil {
-				ra = &t
-			}
-		}
-		stateMap[st.TicketID] = &ticketLocalState{
-			Priority:    int(st.Priority),
-			Blocked:     st.Blocked != 0,
-			Note:        st.Note,
-			ReviewAfter: ra,
-			Today:       st.Today != 0,
-		}
+		return len(tickets), 0
 	}
 
 	total = len(tickets)
-	for _, t := range tickets {
-		ls, exists := stateMap[t.ID]
-		if exists && ls.Today {
+	for _, st := range dbStates {
+		if st.Today != 0 {
 			today++
-		}
-		// Check triageable
-		card := TicketCard{ID: t.ID}
-		if isTriageable(card, stateMap) {
-			triage++
 		}
 	}
 
-	return total, today, triage
+	return total, today
 }
 
 // priorityLabel maps a Freshdesk priority code to a human-readable label.

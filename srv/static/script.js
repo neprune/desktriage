@@ -48,7 +48,7 @@ function toggleReview(btn) {
 
   function getCards() {
     return Array.prototype.slice.call(
-      document.querySelectorAll('.ticket-card, .triage-card')
+      document.querySelectorAll('.ticket-card')
     );
   }
 
@@ -131,6 +131,7 @@ function toggleReview(btn) {
     ['j / \u2193', 'Move to next ticket'],
     ['k / \u2191', 'Move to previous ticket'],
     ['Enter / o', 'Open focused ticket'],
+    ['Opt+Enter', 'Open ticket in Freshdesk'],
     ['Space', 'Expand/collapse ticket preview'],
     ['\u2190', 'Toggle Today'],
     ['\u2192', 'Defer to tomorrow'],
@@ -229,7 +230,7 @@ function toggleReview(btn) {
 
   function clickCardButton(card, iconName) {
     if (!card) return;
-    var buttons = card.querySelectorAll('.btn-icon, .btn-triage');
+    var buttons = card.querySelectorAll('.btn-icon');
     for (var i = 0; i < buttons.length; i++) {
       var icon = buttons[i].querySelector('[data-lucide="' + iconName + '"], svg.lucide-' + iconName);
       if (icon) {
@@ -399,14 +400,29 @@ function toggleReview(btn) {
       // But still let Escape close things
       if (e.key === 'Escape') {
         e.target.blur();
-        var card = e.target.closest('.ticket-card, .triage-card');
+        var card = e.target.closest('.ticket-card');
         if (card) closeEditors(card);
       }
       return;
     }
 
-    // Don't fire on modified keys (Ctrl+C, etc.) except Shift for ?
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    // Don't fire on modified keys (Ctrl+C, etc.) except Shift for ? and Alt for Alt+Enter
+    if (e.ctrlKey || e.metaKey) return;
+
+    // Alt+Enter: open ticket in Freshdesk
+    if (key === 'Enter' && e.altKey) {
+      var card = getFocusedCard();
+      if (!card) return;
+      e.preventDefault();
+      var id = parseTicketId(card);
+      if (id) {
+        var baseURL = document.body.getAttribute('data-freshdesk-url') || '';
+        if (baseURL) window.open(baseURL + '/a/tickets/' + id, '_blank');
+      }
+      return;
+    }
+
+    if (e.altKey) return;
 
     var key = e.key;
 
@@ -487,7 +503,7 @@ function toggleReview(btn) {
     if (key === 'p') {
       e.preventDefault();
       // Try pin first, then x (remove from queue)
-      var buttons = focused.querySelectorAll('.btn-icon, .btn-triage');
+      var buttons = focused.querySelectorAll('.btn-icon');
       for (var i = 0; i < buttons.length; i++) {
         var icon = buttons[i].querySelector('[data-lucide="pin"], svg.lucide-pin, [data-lucide="x"], svg.lucide-x');
         if (icon) {
@@ -500,7 +516,7 @@ function toggleReview(btn) {
 
     if (key === 'n') {
       e.preventDefault();
-      // Only works on ticket-cards (triage cards don't have note editor)
+      // Only works on ticket-cards
       var noteBtn = focused.querySelector('.btn-note');
       if (noteBtn) toggleNote(noteBtn);
       return;
@@ -604,7 +620,7 @@ function toggleReview(btn) {
     // Also ignore clicks inside edit rows (note/review editors)
     if (e.target.closest('.ticket-row-edit')) return;
 
-    var card = e.target.closest('.ticket-card, .triage-card');
+    var card = e.target.closest('.ticket-card');
     if (!card) return;
 
     // Don't handle clicks inside the preview itself
@@ -683,3 +699,8 @@ function toggleReview(btn) {
     showError('Network error — could not reach the server.');
   });
 })();
+
+// Register service worker for PWA installability
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}

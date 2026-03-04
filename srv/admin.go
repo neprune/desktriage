@@ -17,7 +17,6 @@ type AdminConfigData struct {
 	// Shared nav counts (needed by layout)
 	TotalCount  int
 	TodayCount  int
-	TriageCount int
 	// Config-specific
 	Keys    []config.ConfigDef
 	Values  map[string]string

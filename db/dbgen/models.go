@@ -43,4 +43,5 @@ type TicketState struct {
 	ReviewAfter *string `json:"review_after"`
 	Today       int64   `json:"today"`
 	UpdatedAt   string  `json:"updated_at"`
+	DeferredAt  *string `json:"deferred_at"`
 }

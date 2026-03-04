@@ -39,8 +39,8 @@
   </section>
 
   {{if .ForLaterTickets}}
-  <section class="ticket-section section-for-later">
-    <h2><i data-lucide="timer"></i> For Later ({{len .ForLaterTickets}})</h2>
+  <section class="ticket-section section-for-later section-collapsible" data-section-id="for-later">
+    <h2><i data-lucide="timer"></i> For Later ({{len .ForLaterTickets}}) <i data-lucide="chevron-down" class="collapse-chevron"></i></h2>
     <div class="ticket-list">
       {{range .ForLaterTickets}}{{template "ticket-card" .}}{{end}}
     </div>
@@ -48,12 +48,37 @@
   {{end}}
 
   {{if .HistoricTickets}}
-  <section class="ticket-section section-historic">
-    <h2><i data-lucide="archive"></i> Historic ({{len .HistoricTickets}})</h2>
+  <section class="ticket-section section-historic section-collapsible" data-section-id="historic">
+    <h2><i data-lucide="archive"></i> Historic ({{len .HistoricTickets}}) <i data-lucide="chevron-down" class="collapse-chevron"></i></h2>
     <div class="ticket-list">
       {{range .HistoricTickets}}{{template "ticket-card" .}}{{end}}
     </div>
   </section>
   {{end}}
 </div>
+
+<script>
+(function() {
+  var KEY = 'desktriage:sections';
+  function getState() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e) { return {}; }
+  }
+  function saveState(s) {
+    try { localStorage.setItem(KEY, JSON.stringify(s)); } catch(e) {}
+  }
+  document.querySelectorAll('.section-collapsible').forEach(function(section) {
+    var id = section.getAttribute('data-section-id');
+    var h2 = section.querySelector('h2');
+    var state = getState();
+    if (state[id]) section.classList.add('is-collapsed');
+    h2.style.cursor = 'pointer';
+    h2.addEventListener('click', function() {
+      var collapsed = section.classList.toggle('is-collapsed');
+      var s = getState();
+      if (collapsed) { s[id] = true; } else { delete s[id]; }
+      saveState(s);
+    });
+  });
+})();
+</script>
 {{end}}

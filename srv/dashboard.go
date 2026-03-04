@@ -39,7 +39,7 @@ type TicketCard struct {
 	Today          bool
 	ReviewDeferred bool   // true if ReviewAfter is in the future
 	ReviewDue      bool   // true if ReviewAfter is non-nil and ≤ today
-	ViewContext    string // "dashboard", "focus", "triage" — controls htmx behavior
+	ViewContext    string // "dashboard", "today" — controls htmx behavior
 
 	// Sprint info
 	SprintLabel     string // e.g. "S5" — sprint the ticket was created in
@@ -49,7 +49,7 @@ type TicketCard struct {
 
 // DashboardData is passed to the dashboard template.
 type DashboardData struct {
-	Page              string       // "dashboard", "focus", "triage" — for nav highlighting
+	Page              string       // "dashboard", "today" — for nav highlighting
 	PageTitle         string       // optional, for <title> tag (used by ticket detail)
 	ReviewNowTickets  []TicketCard // tickets with review date ≤ today
 	AssignedTickets   []TicketCard // assigned to this agent, sorted by priority then activity
@@ -59,7 +59,6 @@ type DashboardData struct {
 	TotalCount        int
 	TodayCount        int
 	ReviewNowCount    int
-	TriageCount       int
 }
 
 // ---------------------------------------------------------------------------
@@ -153,11 +152,18 @@ func (s *Server) fetchAllTicketCards(ctx context.Context) ([]TicketCard, map[int
 				ra = &t
 			}
 		}
+		var da *time.Time
+		if st.DeferredAt != nil {
+			if t, pErr := time.Parse(time.RFC3339, *st.DeferredAt); pErr == nil {
+				da = &t
+			}
+		}
 		stateMap[st.TicketID] = &ticketLocalState{
 			Priority:    int(st.Priority),
 			Blocked:     st.Blocked != 0,
 			Note:        st.Note,
 			ReviewAfter: ra,
+			DeferredAt:  da,
 			Today:       st.Today != 0,
 		}
 	}
@@ -278,10 +284,24 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 			reviewNow = append(reviewNow, card)
 		}
 
-		// Deferred tickets (future review date) go exclusively to For Later.
+		// Deferred tickets (future review date) go to For Later, unless
+		// the client replied after the ticket was deferred — in which
+		// case promote to Review Now so the agent notices.
 		if card.ReviewDeferred {
-			forLater = append(forLater, card)
-			continue
+			if ls, ok := stateMap[card.ID]; ok && ls.DeferredAt != nil {
+				if latestReply := s.latestIncomingReplyTime(ctx, card.ID); latestReply != nil && latestReply.After(*ls.DeferredAt) {
+					card.ReviewDeferred = false
+					card.ReviewDue = true
+					reviewNow = append(reviewNow, card)
+					// Don't continue — fall through to normal assignment below.
+				} else {
+					forLater = append(forLater, card)
+					continue
+				}
+			} else {
+				forLater = append(forLater, card)
+				continue
+			}
 		}
 
 		if card.IsAssigned {
@@ -337,7 +357,6 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 		return forLater[i].ReviewAfter.Before(*forLater[j].ReviewAfter)
 	})
 
-	triageCount := countTriageable(cards, stateMap)
 
 	return &DashboardData{
 		Page:              "dashboard",
@@ -349,29 +368,9 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 		TotalCount:        len(cards),
 		TodayCount:        todayCount,
 		ReviewNowCount:    len(reviewNow),
-		TriageCount:       triageCount,
 	}, nil
 }
 
-// isTriageable returns true if a ticket has no meaningful local state.
-func isTriageable(card TicketCard, stateMap map[int64]*ticketLocalState) bool {
-	ls, exists := stateMap[card.ID]
-	if !exists {
-		return true
-	}
-	// Has state row but all defaults — still triageable
-	return ls.Priority == 0 && !ls.Today && !ls.Blocked && ls.Note == "" && ls.ReviewAfter == nil
-}
-
-func countTriageable(cards []TicketCard, stateMap map[int64]*ticketLocalState) int {
-	n := 0
-	for _, c := range cards {
-		if isTriageable(c, stateMap) {
-			n++
-		}
-	}
-	return n
-}
 
 // ticketLocalState holds the parsed local DB state for a single ticket.
 type ticketLocalState struct {
@@ -379,6 +378,7 @@ type ticketLocalState struct {
 	Blocked     bool
 	Note        string
 	ReviewAfter *time.Time
+	DeferredAt  *time.Time
 	Today       bool
 }
 
@@ -417,30 +417,38 @@ func (s *Server) resolveCompanyName(ctx context.Context, companyID int64) string
 // determineLastUpdater
 // ---------------------------------------------------------------------------
 
-// determineLastUpdater returns "agent" or "client" based on the last non-private
-// conversation on the ticket. If the ticket has no conversations, it returns
-// "client" (assuming the initial ticket creation by the requester).
-func (s *Server) determineLastUpdater(ctx context.Context, ticket freshdesk.Ticket) string {
-	cacheKey := fmt.Sprintf("conversations:%d", ticket.ID)
+// fetchConversations returns the cached (or freshly-fetched) conversations
+// for a ticket. The result is cached for 5 minutes.
+func (s *Server) fetchConversations(ctx context.Context, ticketID int64) []freshdesk.Conversation {
+	cacheKey := fmt.Sprintf("conversations:%d", ticketID)
 
 	var convos []freshdesk.Conversation
 	ok, err := s.Cache.GetJSON(ctx, cacheKey, &convos)
 	if err != nil {
-		slog.Warn("cache read for conversations", "ticket_id", ticket.ID, "error", err)
+		slog.Warn("cache read for conversations", "ticket_id", ticketID, "error", err)
 	}
 	if !ok {
 		if s.Freshdesk == nil {
-			return "client"
+			return nil
 		}
-		convos, err = s.Freshdesk.GetConversations(ctx, ticket.ID)
+		convos, err = s.Freshdesk.GetConversations(ctx, ticketID)
 		if err != nil {
-			slog.Warn("fetch conversations", "ticket_id", ticket.ID, "error", err)
-			return "client"
+			slog.Warn("fetch conversations", "ticket_id", ticketID, "error", err)
+			return nil
 		}
 		if cErr := s.Cache.SetJSON(ctx, cacheKey, convos, 5*time.Minute); cErr != nil {
-			slog.Warn("cache write for conversations", "ticket_id", ticket.ID, "error", cErr)
+			slog.Warn("cache write for conversations", "ticket_id", ticketID, "error", cErr)
 		}
 	}
+
+	return convos
+}
+
+// determineLastUpdater returns "agent" or "client" based on the last non-private
+// conversation on the ticket. If the ticket has no conversations, it returns
+// "client" (assuming the initial ticket creation by the requester).
+func (s *Server) determineLastUpdater(ctx context.Context, ticket freshdesk.Ticket) string {
+	convos := s.fetchConversations(ctx, ticket.ID)
 
 	if len(convos) == 0 {
 		return "client"
@@ -458,6 +466,19 @@ func (s *Server) determineLastUpdater(ctx context.Context, ticket freshdesk.Tick
 
 	// All conversations are private (internal notes only) — treat as agent.
 	return "agent"
+}
+
+// latestIncomingReplyTime returns the CreatedAt time of the most recent
+// incoming (client) non-private conversation, or nil if there are none.
+func (s *Server) latestIncomingReplyTime(ctx context.Context, ticketID int64) *time.Time {
+	convos := s.fetchConversations(ctx, ticketID)
+	for i := len(convos) - 1; i >= 0; i-- {
+		if !convos[i].Private && convos[i].Incoming {
+			t := convos[i].CreatedAt
+			return &t
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

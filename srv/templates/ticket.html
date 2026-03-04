@@ -35,6 +35,37 @@
           <span class="conversation-time conversation-toggle" title="Click to collapse/expand">{{.CreatedAt.Format "Jan 2, 2006 3:04 PM"}} · {{.CreatedTimeSince}}</span>
         </div>
         <div class="conversation-body">{{.Description}}</div>
+        {{if .Attachments}}
+        <div class="conversation-attachments">
+          {{range .Attachments}}
+          {{if hasPrefix .ContentType "image/"}}
+          <figure class="attachment-inline">
+            <a href="{{.URL}}" target="_blank" rel="noopener">
+              <img src="{{.URL}}" alt="{{.Name}}" loading="lazy">
+            </a>
+            <figcaption><i data-lucide="paperclip"></i> {{.Name}} <span class="attachment-size">{{formatSize .Size}}</span></figcaption>
+          </figure>
+          {{else if eq .ContentType "application/pdf"}}
+          <div class="attachment-inline">
+            <object data="{{.URL}}" type="application/pdf" class="attachment-pdf">
+              <a class="attachment" href="{{.URL}}" target="_blank" rel="noopener">
+                <i data-lucide="paperclip"></i>
+                <span class="attachment-name">{{.Name}}</span>
+                <span class="attachment-size">{{formatSize .Size}}</span>
+              </a>
+            </object>
+            <figcaption><i data-lucide="paperclip"></i> {{.Name}} <span class="attachment-size">{{formatSize .Size}}</span></figcaption>
+          </div>
+          {{else}}
+          <a class="attachment" href="{{.URL}}" target="_blank" rel="noopener">
+            <i data-lucide="paperclip"></i>
+            <span class="attachment-name">{{.Name}}</span>
+            <span class="attachment-size">{{formatSize .Size}}</span>
+          </a>
+          {{end}}
+          {{end}}
+        </div>
+        {{end}}
       </div>
 
       {{/* === Conversation thread === */}}

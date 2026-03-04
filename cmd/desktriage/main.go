@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"desktriage.davea.me/config"
 	"desktriage.davea.me/db"
@@ -23,7 +27,7 @@ func defaultDBPath() string {
 }
 
 var (
-	flagListenAddr = flag.String("listen", ":8000", "address to listen on")
+	flagListenAddr = flag.String("listen", ":8086", "address to listen on")
 	flagDBPath     = flag.String("db", defaultDBPath(), "path to SQLite database")
 	flagEnvFile    = flag.String("env", ".env", "path to .env file for initial seed")
 )
@@ -76,5 +80,38 @@ func run() error {
 		return fmt.Errorf("create server: %w", err)
 	}
 
-	return server.Serve(*flagListenAddr)
+	// Set up SIGHUP handler to trigger graceful restart.
+	restart := false
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+
+	srvCtx, srvCancel := context.WithCancel(ctx)
+	defer srvCancel()
+
+	go func() {
+		<-sigCh
+		slog.Info("received SIGHUP, restarting...")
+		restart = true
+		srvCancel()
+	}()
+
+	err = server.ServeWithContext(srvCtx, *flagListenAddr)
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+
+	if !restart {
+		return nil
+	}
+
+	// Close DB before re-exec
+	dbase.Close()
+
+	// Re-execute ourselves with the same arguments.
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve executable path: %w", err)
+	}
+	slog.Info("re-executing", "path", exe)
+	return syscall.Exec(exe, os.Args, os.Environ())
 }

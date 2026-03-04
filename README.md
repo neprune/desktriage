@@ -4,7 +4,7 @@ A Go web application for managing Freshdesk support tickets. Provides a dashboar
 
 ## Building and Running
 
-Build with `make build`, then run `./desktriage`. The server listens on port 8000 by default.
+Build with `make build`, then run `./desktriage`. The server listens on port 8086 by default.
 
 ## Running as a systemd service
 

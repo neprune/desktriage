@@ -4,20 +4,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{if .PageTitle}}{{.PageTitle}}{{else}}DeskTriage{{if eq .Page "dashboard"}} — Dashboard ({{.TotalCount}}){{else if eq .Page "focus"}} — Focus ({{.TodayCount}}){{else if eq .Page "triage"}} — Triage ({{.TriageCount}}){{end}}{{end}}</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d3436' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='8' y='2' width='8' height='4' rx='1' ry='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/></svg>">
+  <title>{{if .PageTitle}}{{.PageTitle}}{{else}}DeskTriage{{if eq .Page "dashboard"}} — Dashboard ({{.TotalCount}}){{else if eq .Page "today"}} — Today ({{.TodayCount}}){{end}}{{end}}</title>
+  <link rel="icon" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#2d3436">
   <link rel="stylesheet" href="/static/style.css?v={{staticHash}}">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
   <script src="/static/script.js?v={{staticHash}}" defer></script>
 </head>
-<body>
+<body data-freshdesk-url="{{freshdeskURL}}">
   <nav class="navbar">
     <a class="navbar-brand" href="/">DeskTriage</a>
     <div class="navbar-links">
       <a href="/"{{if eq .Page "dashboard"}} class="active"{{end}}>Dashboard <span class="nav-badge">{{.TotalCount}}</span></a>
-      <a href="/focus"{{if eq .Page "focus"}} class="active"{{end}}>Focus{{if gt .TodayCount 0}} <span class="nav-badge nav-badge-today">{{.TodayCount}}</span>{{end}}</a>
-      <a href="/triage"{{if eq .Page "triage"}} class="active"{{end}}>Triage{{if gt .TriageCount 0}} <span class="nav-badge nav-badge-triage">{{.TriageCount}}</span>{{end}}</a>
+      <a href="/today"{{if eq .Page "today"}} class="active"{{end}}>Today{{if gt .TodayCount 0}} <span class="nav-badge nav-badge-today">{{.TodayCount}}</span>{{end}}</a>
     </div>
     <div class="navbar-actions">
       <a href="/admin/config" class="btn btn-icon" title="Settings"><i data-lucide="settings"></i></a>

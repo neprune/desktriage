@@ -225,35 +225,16 @@ func TestUpdateState_Dismiss(t *testing.T) {
 	}
 }
 
-func TestUpdateState_FromTriage_ReturnsEmpty(t *testing.T) {
+func TestUpdateState_FromToday_ReturnsEmpty(t *testing.T) {
 	s := newTestServer(t)
 	seedCachedTicket(t, s, 12345)
 
-	rr := putState(s, "12345", "field=today&value=1&from=triage")
+	rr := putState(s, "12345", "field=today&value=0&from=today")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("got %d", rr.Code)
 	}
 	if rr.Body.Len() != 0 {
-		t.Errorf("expected empty body for triage action, got %d bytes", rr.Body.Len())
-	}
-
-	// But the state should still be saved
-	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
-	if st.Today != 1 {
-		t.Errorf("today: want 1, got %d", st.Today)
-	}
-}
-
-func TestUpdateState_FromFocus_ReturnsEmpty(t *testing.T) {
-	s := newTestServer(t)
-	seedCachedTicket(t, s, 12345)
-
-	rr := putState(s, "12345", "field=today&value=0&from=focus")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("got %d", rr.Code)
-	}
-	if rr.Body.Len() != 0 {
-		t.Errorf("expected empty body for focus unflag, got %d bytes", rr.Body.Len())
+		t.Errorf("expected empty body for today unflag, got %d bytes", rr.Body.Len())
 	}
 }
 

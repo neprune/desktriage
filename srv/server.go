@@ -1,6 +1,7 @@
 package srv
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"desktriage.davea.me/cache"
 	"desktriage.davea.me/config"
@@ -72,12 +74,16 @@ func NewWithDB(wdb *sql.DB, cfg *config.Config) (*Server, error) {
 
 // Serve starts the HTTP server.
 func (s *Server) Serve(addr string) error {
+	return s.ServeWithContext(context.Background(), addr)
+}
+
+// ServeWithContext starts the HTTP server and shuts down gracefully when ctx is cancelled.
+func (s *Server) ServeWithContext(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 
 	// Pages
 	mux.HandleFunc("GET /{$}", s.HandleDashboard)
-	mux.HandleFunc("GET /focus", s.HandleFocus)
-	mux.HandleFunc("GET /triage", s.HandleTriage)
+	mux.HandleFunc("GET /today", s.HandleToday)
 	mux.HandleFunc("POST /refresh", s.HandleRefresh)
 
 	// Ticket detail
@@ -93,6 +99,13 @@ func (s *Server) Serve(addr string) error {
 	mux.HandleFunc("POST /admin/sprint-anchor", s.HandleAdminSprintAnchorAdd)
 	mux.HandleFunc("DELETE /admin/sprint-anchor/{year}/{sprint}", s.HandleAdminSprintAnchorDelete)
 
+	// Service worker at root scope (required for PWA)
+	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "no-cache, max-age=0")
+		http.ServeFile(w, r, filepath.Join(s.StaticDir, "sw.js"))
+	})
+
 	// Static files (short cache for quick iteration)
 	staticFS := http.StripPrefix("/static/", http.FileServer(http.Dir(s.StaticDir)))
 	mux.Handle("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,8 +113,17 @@ func (s *Server) Serve(addr string) error {
 		staticFS.ServeHTTP(w, r)
 	}))
 
+	httpSrv := &http.Server{Addr: addr, Handler: mux}
+
+	// Shut down gracefully when the context is cancelled.
+	go func() {
+		<-ctx.Done()
+		slog.Info("shutting down server")
+		httpSrv.Shutdown(context.Background())
+	}()
+
 	slog.Info("starting server", "addr", addr)
-	return http.ListenAndServe(addr, mux)
+	return httpSrv.ListenAndServe()
 }
 
 // HandleDashboard renders the main dashboard page.
@@ -148,7 +170,22 @@ func computeStaticHash(dir string) string {
 
 func (s *Server) templateFuncMap() template.FuncMap {
 	return template.FuncMap{
-		"staticHash": func() string { return s.staticHash },
+		"staticHash":   func() string { return s.staticHash },
+		"freshdeskURL": func() string { return s.Config.FreshdeskURL },
+		"formatSize":   formatSize,
+		"hasPrefix":    strings.HasPrefix,
+	}
+}
+
+// formatSize returns a human-readable file size string.
+func formatSize(bytes int64) string {
+	switch {
+	case bytes >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(1<<20))
+	case bytes >= 1<<10:
+		return fmt.Sprintf("%.0f KB", float64(bytes)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", bytes)
 	}
 }
 

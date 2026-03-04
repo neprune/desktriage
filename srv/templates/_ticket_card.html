@@ -17,7 +17,7 @@
       <button class="btn-icon{{if .Today}} active{{end}}"
               title="{{if .Today}}Remove from today{{else}}Flag for today{{end}}"
               hx-put="/ticket/{{.ID}}/state"
-              hx-vals='{"field": "today", "value": "{{if .Today}}0{{else}}1{{end}}"{{if eq .ViewContext "focus"}}, "from": "focus"{{end}}}'
+              hx-vals='{"field": "today", "value": "{{if .Today}}0{{else}}1{{end}}"{{if eq .ViewContext "today"}}, "from": "today"{{end}}}'
               hx-target="#ticket-{{.ID}}"
               hx-swap="outerHTML"><i data-lucide="star"></i></button>
       <button class="btn-icon{{if .Blocked}} active{{end}}"

@@ -11,15 +11,16 @@ SELECT * FROM ticket_state WHERE today = 1 ORDER BY priority DESC;
 SELECT ticket_id FROM ticket_state WHERE priority = 0 AND today = 0 AND blocked = 0;
 
 -- name: UpsertTicketState :exec
-INSERT INTO ticket_state (ticket_id, priority, blocked, note, review_after, today, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO ticket_state (ticket_id, priority, blocked, note, review_after, today, updated_at, deferred_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(ticket_id) DO UPDATE SET
     priority = excluded.priority,
     blocked = excluded.blocked,
     note = excluded.note,
     review_after = excluded.review_after,
     today = excluded.today,
-    updated_at = excluded.updated_at;
+    updated_at = excluded.updated_at,
+    deferred_at = excluded.deferred_at;
 
 -- name: DeleteTicketState :exec
 DELETE FROM ticket_state WHERE ticket_id = ?;

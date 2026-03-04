@@ -5,8 +5,8 @@
     <div class="preview-body">{{.Description}}</div>
   </div>
   {{if .LatestReply}}
-  <div class="preview-section preview-reply{{if .LatestReply.Incoming}} preview-incoming{{else}} preview-outgoing{{end}}">
-    <div class="preview-label">Latest reply &middot; {{.LatestReply.SenderName}} &middot; {{.LatestReply.TimeSince}}</div>
+  <div class="preview-section preview-reply{{if .LatestReply.Private}} preview-private{{else if .LatestReply.Incoming}} preview-incoming{{else}} preview-outgoing{{end}}">
+    <div class="preview-label">{{if .LatestReply.Private}}Private note{{else}}Latest reply{{end}} &middot; {{.LatestReply.SenderName}} &middot; {{.LatestReply.TimeSince}}</div>
     <div class="preview-body">{{.LatestReply.Body}}</div>
   </div>
   {{end}}

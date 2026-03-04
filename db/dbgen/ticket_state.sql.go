@@ -19,7 +19,7 @@ func (q *Queries) DeleteTicketState(ctx context.Context, ticketID int64) error {
 }
 
 const getTicketState = `-- name: GetTicketState :one
-SELECT ticket_id, priority, blocked, note, review_after, today, updated_at FROM ticket_state WHERE ticket_id = ?
+SELECT ticket_id, priority, blocked, note, review_after, today, updated_at, deferred_at FROM ticket_state WHERE ticket_id = ?
 `
 
 func (q *Queries) GetTicketState(ctx context.Context, ticketID int64) (TicketState, error) {
@@ -33,12 +33,13 @@ func (q *Queries) GetTicketState(ctx context.Context, ticketID int64) (TicketSta
 		&i.ReviewAfter,
 		&i.Today,
 		&i.UpdatedAt,
+		&i.DeferredAt,
 	)
 	return i, err
 }
 
 const listTicketStates = `-- name: ListTicketStates :many
-SELECT ticket_id, priority, blocked, note, review_after, today, updated_at FROM ticket_state ORDER BY priority DESC, updated_at DESC
+SELECT ticket_id, priority, blocked, note, review_after, today, updated_at, deferred_at FROM ticket_state ORDER BY priority DESC, updated_at DESC
 `
 
 func (q *Queries) ListTicketStates(ctx context.Context) ([]TicketState, error) {
@@ -58,6 +59,7 @@ func (q *Queries) ListTicketStates(ctx context.Context) ([]TicketState, error) {
 			&i.ReviewAfter,
 			&i.Today,
 			&i.UpdatedAt,
+			&i.DeferredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -73,7 +75,7 @@ func (q *Queries) ListTicketStates(ctx context.Context) ([]TicketState, error) {
 }
 
 const listTodayTicketStates = `-- name: ListTodayTicketStates :many
-SELECT ticket_id, priority, blocked, note, review_after, today, updated_at FROM ticket_state WHERE today = 1 ORDER BY priority DESC
+SELECT ticket_id, priority, blocked, note, review_after, today, updated_at, deferred_at FROM ticket_state WHERE today = 1 ORDER BY priority DESC
 `
 
 func (q *Queries) ListTodayTicketStates(ctx context.Context) ([]TicketState, error) {
@@ -93,6 +95,7 @@ func (q *Queries) ListTodayTicketStates(ctx context.Context) ([]TicketState, err
 			&i.ReviewAfter,
 			&i.Today,
 			&i.UpdatedAt,
+			&i.DeferredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -135,15 +138,16 @@ func (q *Queries) ListTriageableTicketIDs(ctx context.Context) ([]int64, error) 
 }
 
 const upsertTicketState = `-- name: UpsertTicketState :exec
-INSERT INTO ticket_state (ticket_id, priority, blocked, note, review_after, today, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO ticket_state (ticket_id, priority, blocked, note, review_after, today, updated_at, deferred_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(ticket_id) DO UPDATE SET
     priority = excluded.priority,
     blocked = excluded.blocked,
     note = excluded.note,
     review_after = excluded.review_after,
     today = excluded.today,
-    updated_at = excluded.updated_at
+    updated_at = excluded.updated_at,
+    deferred_at = excluded.deferred_at
 `
 
 type UpsertTicketStateParams struct {
@@ -154,6 +158,7 @@ type UpsertTicketStateParams struct {
 	ReviewAfter *string `json:"review_after"`
 	Today       int64   `json:"today"`
 	UpdatedAt   string  `json:"updated_at"`
+	DeferredAt  *string `json:"deferred_at"`
 }
 
 func (q *Queries) UpsertTicketState(ctx context.Context, arg UpsertTicketStateParams) error {
@@ -165,6 +170,7 @@ func (q *Queries) UpsertTicketState(ctx context.Context, arg UpsertTicketStatePa
 		arg.ReviewAfter,
 		arg.Today,
 		arg.UpdatedAt,
+		arg.DeferredAt,
 	)
 	return err
 }

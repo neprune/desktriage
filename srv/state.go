@@ -50,6 +50,8 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 	case "today":
 		if value == "1" {
 			existing.Today = 1
+			existing.ReviewAfter = nil // clear any pending review date
+			existing.DeferredAt = nil
 		} else {
 			existing.Today = 0
 		}
@@ -64,6 +66,7 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 	case "review_after":
 		if value == "" {
 			existing.ReviewAfter = nil
+			existing.DeferredAt = nil
 		} else {
 			// Parse date input (YYYY-MM-DD) and store as RFC3339
 			t, pErr := time.Parse("2006-01-02", value)
@@ -71,8 +74,10 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "invalid date", http.StatusBadRequest)
 				return
 			}
-			s := t.Format(time.RFC3339)
-			existing.ReviewAfter = &s
+			rs := t.Format(time.RFC3339)
+			existing.ReviewAfter = &rs
+			nowStr := time.Now().UTC().Format(time.RFC3339)
+			existing.DeferredAt = &nowStr
 		}
 	case "priority":
 		p, pErr := strconv.ParseInt(value, 10, 64)
@@ -90,6 +95,8 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 		existing.Today = 0
 		tomorrow := time.Now().AddDate(0, 0, 1).Truncate(24 * time.Hour).Format(time.RFC3339)
 		existing.ReviewAfter = &tomorrow
+		nowStr := time.Now().UTC().Format(time.RFC3339)
+		existing.DeferredAt = &nowStr
 	case "defer_next_sprint":
 		// Unset today and set review_after to the start of the next sprint.
 		existing.Today = 0
@@ -101,6 +108,8 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 		}
 		ns := nextStart.Format(time.RFC3339)
 		existing.ReviewAfter = &ns
+		nowStr := time.Now().UTC().Format(time.RFC3339)
+		existing.DeferredAt = &nowStr
 	default:
 		http.Error(w, "unknown field: "+field, http.StatusBadRequest)
 		return
@@ -116,6 +125,7 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 		ReviewAfter: existing.ReviewAfter,
 		Today:       existing.Today,
 		UpdatedAt:   now,
+		DeferredAt:  existing.DeferredAt,
 	})
 	if err != nil {
 		slog.Error("upsert ticket state", "ticket_id", ticketID, "error", err)
@@ -123,10 +133,10 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If the request came from triage or focus (toggling today off),
+	// If the request came from the today page (toggling today off),
 	// return empty HTML to remove the card from the list.
 	from := r.FormValue("from")
-	if from == "triage" || from == "focus" {
+	if from == "today" {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		return
 	}
