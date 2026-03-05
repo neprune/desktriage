@@ -83,5 +83,56 @@
       <button type="submit" class="btn btn-save">Add Anchor</button>
     </form>
   </section>
+  <section class="account-managers">
+    <h2><i data-lucide="users"></i> Account Managers</h2>
+    <p class="admin-subtitle">Assign agents as account managers for companies. Their first name will appear next to the company name on ticket details.</p>
+
+    {{if .AccountManagers}}
+    <table class="anchor-table">
+      <thead>
+        <tr><th>Company</th><th>Agent</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{range .AccountManagers}}
+        <tr>
+          <td>{{.CompanyName}}</td>
+          <td>{{.AgentName}}</td>
+          <td>
+            <button class="btn btn-sm btn-danger"
+                    onclick="event.preventDefault(); if(confirm('Remove {{.AgentName}} from {{.CompanyName}}?')) { fetch('/admin/account-manager/{{.CompanyID}}/{{.AgentID}}', {method:'DELETE'}).then(()=>window.location='/admin/config?saved=1') }"
+            >✕</button>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p class="empty-state">No account managers assigned yet.</p>
+    {{end}}
+
+    <form method="POST" action="/admin/account-manager" class="anchor-form">
+      <div class="anchor-form-fields">
+        <div class="config-field">
+          <label for="am_company">Company</label>
+          <select id="am_company" name="company_id" required class="config-input">
+            <option value="">Select company…</option>
+            {{range .AllCompanies}}
+            <option value="{{.ID}}">{{.Name}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="config-field">
+          <label for="am_agent">Agent</label>
+          <select id="am_agent" name="agent_id" required class="config-input">
+            <option value="">Select agent…</option>
+            {{range .AllAgents}}
+            <option value="{{.ID}}">{{.Contact.Name}}</option>
+            {{end}}
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-save">Add Account Manager</button>
+    </form>
+  </section>
 </div>
 {{end}}

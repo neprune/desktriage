@@ -68,6 +68,15 @@
         {{end}}
       </div>
 
+      {{/* === Conversation toolbar === */}}
+      {{if .Conversations}}
+      <div class="conversation-toolbar">
+        <button class="btn-toolbar" id="btn-expand-all" title="Expand all conversations">Expand All</button>
+        <button class="btn-toolbar" id="btn-collapse-all" title="Collapse all conversations">Collapse All</button>
+        <span class="convo-count">{{len .Conversations}} messages</span>
+      </div>
+      {{end}}
+
       {{/* === Conversation thread === */}}
       {{range .Conversations}}
       <div class="conversation-entry{{if .Private}} conversation-private{{else if .Incoming}} conversation-incoming{{else}} conversation-outgoing{{end}}{{if .IsAutoResponse}} conversation-auto-response{{end}}" data-convo-id="{{.ID}}"{{if .IsAutoResponse}} data-auto-collapse="true"{{end}}>
@@ -197,15 +206,32 @@
   // --- Collapse/expand entire conversation entries ---
   var entries = document.querySelectorAll('.conversation-entry[data-convo-id]');
   var state = getCollapsed();
+  var KEEP_EXPANDED = 3; // always show last N conversation entries expanded
 
-  entries.forEach(function(entry) {
+  // The first entry is the original ticket description — never collapse it.
+  // Remaining entries: auto-collapse all except the last KEEP_EXPANDED,
+  // unless the user has an explicit localStorage override.
+  entries.forEach(function(entry, index) {
     var id = String(entry.getAttribute('data-convo-id'));
+    var isOriginal = id.indexOf('desc-') === 0;
     var autoCollapse = entry.hasAttribute('data-auto-collapse');
+    // Conversations start at index 1; check if this is in the last N
+    var isRecentConvo = !isOriginal && (index >= entries.length - KEEP_EXPANDED);
 
-    // Determine initial state: explicit localStorage > auto-collapse default > expanded
-    if (state.hasOwnProperty(id)) {
+    if (isOriginal) {
+      // Never collapse the original description
+      applyState(entry, false);
+    } else if (state.hasOwnProperty(id)) {
+      // Explicit user override from localStorage
       applyState(entry, state[id]);
     } else if (autoCollapse) {
+      // Auto-response notes are always collapsed by default
+      applyState(entry, true);
+    } else if (isRecentConvo) {
+      // Recent entries default to expanded
+      applyState(entry, false);
+    } else {
+      // Older entries default to collapsed
       applyState(entry, true);
     }
 
@@ -222,6 +248,37 @@
       });
     }
   });
+
+  // --- Expand All / Collapse All buttons ---
+  var btnExpand = document.getElementById('btn-expand-all');
+  var btnCollapse = document.getElementById('btn-collapse-all');
+
+  if (btnExpand) {
+    btnExpand.addEventListener('click', function() {
+      var map = getCollapsed();
+      entries.forEach(function(entry) {
+        var id = String(entry.getAttribute('data-convo-id'));
+        applyState(entry, false);
+        map[id] = false;
+      });
+      setCollapsed(map);
+    });
+  }
+
+  if (btnCollapse) {
+    btnCollapse.addEventListener('click', function() {
+      var map = getCollapsed();
+      entries.forEach(function(entry) {
+        var id = String(entry.getAttribute('data-convo-id'));
+        var isOriginal = id.indexOf('desc-') === 0;
+        if (!isOriginal) {
+          applyState(entry, true);
+          map[id] = true;
+        }
+      });
+      setCollapsed(map);
+    });
+  }
 })();
 </script>
 {{end}}

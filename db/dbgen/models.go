@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+type AccountManager struct {
+	CompanyID int64  `json:"company_id"`
+	AgentID   int64  `json:"agent_id"`
+	CreatedAt string `json:"created_at"`
+}
+
 type ApiCache struct {
 	CacheKey     string  `json:"cache_key"`
 	ResponseBody string  `json:"response_body"`

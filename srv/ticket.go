@@ -155,8 +155,8 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 	// --- Resolve requester -----------------------------------------------
 	reqName, reqEmail := s.resolveContact(ctx, ticket.RequesterID)
 
-	// --- Resolve company name --------------------------------------------
-	companyName := s.resolveCompanyName(ctx, ticket.CompanyID)
+	// --- Resolve company name (with account manager names) ---------------
+	companyName := s.companyDisplayName(ctx, ticket.CompanyID, s.resolveCompanyName(ctx, ticket.CompanyID))
 
 	// --- Resolve conversation sender names concurrently ------------------
 	uniqueUserIDs := make(map[int64]struct{})

@@ -98,6 +98,8 @@ func (s *Server) ServeWithContext(ctx context.Context, addr string) error {
 	mux.HandleFunc("POST /admin/config", s.HandleAdminConfigSave)
 	mux.HandleFunc("POST /admin/sprint-anchor", s.HandleAdminSprintAnchorAdd)
 	mux.HandleFunc("DELETE /admin/sprint-anchor/{year}/{sprint}", s.HandleAdminSprintAnchorDelete)
+	mux.HandleFunc("POST /admin/account-manager", s.HandleAdminAccountManagerAdd)
+	mux.HandleFunc("DELETE /admin/account-manager/{company_id}/{agent_id}", s.HandleAdminAccountManagerDelete)
 
 	// Service worker at root scope (required for PWA)
 	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {

@@ -328,3 +328,13 @@ func (c *Client) GetCurrentAgent(ctx context.Context) (*Agent, error) {
 	}
 	return &ag, nil
 }
+
+// ListAgents returns all agents in the Freshdesk account.
+func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
+	return paginate[Agent](c, ctx, "/api/v2/agents", nil)
+}
+
+// ListCompanies returns all companies in the Freshdesk account.
+func (c *Client) ListCompanies(ctx context.Context) ([]Company, error) {
+	return paginate[Company](c, ctx, "/api/v2/companies", nil)
+}

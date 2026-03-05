@@ -242,6 +242,17 @@ function toggleReview(btn) {
 
   // --- Ticket preview expand/collapse ---------------------------------------
 
+  function markOverflowingPreviews(container) {
+    var bodies = container.querySelectorAll('.preview-body');
+    for (var i = 0; i < bodies.length; i++) {
+      if (bodies[i].scrollHeight > bodies[i].clientHeight) {
+        bodies[i].classList.add('is-overflowing');
+      } else {
+        bodies[i].classList.remove('is-overflowing');
+      }
+    }
+  }
+
   function togglePreview(card) {
     if (!card) return;
     var id = parseTicketId(card);
@@ -284,6 +295,8 @@ function toggleReview(btn) {
         temp.innerHTML = html;
         var preview = temp.firstElementChild;
         if (preview) card.appendChild(preview);
+        // Mark bodies that are tall enough to need a fade-out
+        markOverflowingPreviews(card);
         // Re-centre after real content is inserted (may be taller)
         scrollCardToCenter(card);
       })

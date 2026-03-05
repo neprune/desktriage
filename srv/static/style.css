@@ -381,7 +381,8 @@ main {
 }
 .preview-body img {
   max-width: 100%;
-  height: auto;
+  height: auto !important;
+  width: auto;
 }
 .preview-body blockquote {
   border-left: 3px solid #dfe6e9;
@@ -389,7 +390,7 @@ main {
   padding: 0.25rem 0.75rem;
   color: #636e72;
 }
-.preview-body::after {
+.preview-body.is-overflowing::after {
   content: '';
   position: absolute;
   bottom: 0;
@@ -399,13 +400,13 @@ main {
   background: linear-gradient(transparent, var(--fade-preview));
   pointer-events: none;
 }
-.preview-incoming .preview-body::after {
+.preview-incoming .preview-body.is-overflowing::after {
   background: linear-gradient(transparent, var(--fade-preview-in));
 }
-.preview-outgoing .preview-body::after {
+.preview-outgoing .preview-body.is-overflowing::after {
   background: linear-gradient(transparent, var(--fade-preview-out));
 }
-.preview-private .preview-body::after {
+.preview-private .preview-body.is-overflowing::after {
   background: linear-gradient(transparent, var(--fade-preview-private));
 }
 .ticket-preview.htmx-swapping {
@@ -623,6 +624,34 @@ a.ticket-number:hover {
 }
 .meta-item { white-space: nowrap; }
 
+/* === Conversation toolbar (expand/collapse all) === */
+.conversation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.conversation-toolbar .btn-toolbar {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.conversation-toolbar .btn-toolbar:hover {
+  background: var(--bg-hover-btn);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.conversation-toolbar .convo-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
 .ticket-detail-tags {
   display: flex;
   gap: 0.35rem;
@@ -707,8 +736,12 @@ a.ticket-number:hover {
 .is-collapsed .conversation-toggle::after {
   content: ' ▸';
 }
-.is-collapsed .conversation-body {
+.is-collapsed .conversation-body,
+.is-collapsed .conversation-attachments {
   display: none;
+}
+.is-collapsed .conversation-header {
+  margin-bottom: 0;
 }
 
 .conversation-body {
@@ -719,7 +752,8 @@ a.ticket-number:hover {
 }
 .conversation-body img {
   max-width: 100%;
-  height: auto;
+  height: auto !important;
+  width: auto;
 }
 .conversation-body blockquote {
   border-left: 3px solid var(--border);

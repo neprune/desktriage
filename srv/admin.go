@@ -8,6 +8,7 @@ import (
 
 	"desktriage.davea.me/config"
 	"desktriage.davea.me/db/dbgen"
+	"desktriage.davea.me/freshdesk"
 )
 
 // AdminConfigData is the template data for the admin config page.
@@ -26,6 +27,10 @@ type AdminConfigData struct {
 	SprintAnchors []SprintAnchorView
 	CurrentSprint string // e.g. "S5 (2026)"
 	CurrentYear   int
+	// Account managers
+	AccountManagers []AccountManagerView
+	AllAgents       []freshdesk.Agent
+	AllCompanies    []freshdesk.Company
 }
 
 // HandleAdminConfig renders the admin config page.
@@ -109,12 +114,15 @@ func (s *Server) buildAdminConfigData(r *http.Request) AdminConfigData {
 	}
 
 	return AdminConfigData{
-		Page:          "admin",
-		PageTitle:     "DeskTriage — Settings",
-		Keys:          config.KnownKeys,
-		Values:        values,
-		SprintAnchors: sprintAnchorViews(anchorRows),
-		CurrentSprint: s.currentSprintLabel(ctx),
-		CurrentYear:   time.Now().Year(),
+		Page:            "admin",
+		PageTitle:       "DeskTriage — Settings",
+		Keys:            config.KnownKeys,
+		Values:          values,
+		SprintAnchors:   sprintAnchorViews(anchorRows),
+		CurrentSprint:   s.currentSprintLabel(ctx),
+		CurrentYear:     time.Now().Year(),
+		AccountManagers: s.loadAccountManagerViews(ctx),
+		AllAgents:       s.loadAgentsForAdmin(ctx),
+		AllCompanies:    s.loadCompaniesForAdmin(ctx),
 	}
 }
