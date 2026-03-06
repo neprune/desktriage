@@ -51,7 +51,7 @@ func (s *Server) HandleToday(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.renderTemplate(w, "focus.html", data); err != nil {
+	if err := s.renderTemplateCtx(r.Context(), w, "focus.html", data); err != nil {
 		slog.Warn("render today", "error", err)
 	}
 }

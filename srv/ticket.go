@@ -77,6 +77,30 @@ type TicketDetailData struct {
 	// Sprint info
 	SprintLabel     string
 	IsCurrentSprint bool
+
+	// Feature flags
+	NoteEnabled          bool // whether the "Add Note" form should appear
+	StatusChangeEnabled  bool // whether the Freshdesk status dropdown should appear
+	FreshdeskStatusData  *FreshdeskStatusData // data for the freshdesk-status partial
+}
+
+// StatusOption is a label+value pair for Freshdesk status dropdowns.
+type StatusOption struct {
+	Label    string
+	Value    int
+	Selected bool
+}
+
+// FreshdeskStatusData is passed to the freshdesk-status partial.
+type FreshdeskStatusData struct {
+	ID       int64
+	Statuses []StatusOption
+}
+
+// FreshdeskStatusBadgeData is passed to the freshdesk-status-badge OOB partial.
+type FreshdeskStatusBadgeData struct {
+	Status      int
+	StatusLabel string
 }
 
 // TicketStateData is the minimal struct passed to the ticket-state partial.
@@ -255,6 +279,10 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// --- Fetch Freshdesk status choices (cached 1h) --------------------
+	var freshdeskStatusData *FreshdeskStatusData
+	freshdeskStatusData = s.buildFreshdeskStatusData(ctx, ticket.ID, ticket.Status)
+
 	data := &TicketDetailData{
 		Page:           "ticket",
 		PageTitle:      fmt.Sprintf("#%d: %s", ticket.ID, ticket.Subject),
@@ -266,7 +294,7 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 		Description:    template.HTML(ticket.Description),
 		Attachments:    ticket.Attachments,
 		Status:         ticket.Status,
-		StatusLabel:    statusLabel(ticket.Status),
+		StatusLabel:    s.statusLabel(ctx, ticket.Status),
 		Priority:       ticket.Priority,
 		PriorityLabel:  priorityLabel(ticket.Priority),
 		Type:           ticket.Type,
@@ -288,12 +316,80 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 		ViewContext:    "ticket",
 		SprintLabel:     sprintLabel,
 		IsCurrentSprint: isCurrentSprint,
+		NoteEnabled:         true,
+		StatusChangeEnabled: true,
+		FreshdeskStatusData: freshdeskStatusData,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.renderTemplate(w, "ticket.html", data); err != nil {
+	if err := s.renderTemplateCtx(r.Context(), w, "ticket.html", data); err != nil {
 		slog.Warn("render ticket detail", "error", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Add Private Note
+// ---------------------------------------------------------------------------
+
+// maxNoteLen caps the length of a note body to avoid accidental megabyte posts.
+const maxNoteLen = 10_000
+
+// HandleAddNote creates a private note on a Freshdesk ticket via the API.
+func (s *Server) HandleAddNote(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	ticketID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid ticket ID", http.StatusBadRequest)
+		return
+	}
+
+	body := strings.TrimSpace(r.FormValue("body"))
+	if body == "" {
+		http.Error(w, "Note body cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxNoteLen {
+		http.Error(w, fmt.Sprintf("Note body too long (max %d characters)", maxNoteLen), http.StatusBadRequest)
+		return
+	}
+
+	// Rate limit: max 1 note per 5 seconds per ticket.
+	if !s.noteLimiter.Allow(ticketID, 5*time.Second) {
+		http.Error(w, "Please wait a few seconds before adding another note", http.StatusTooManyRequests)
+		return
+	}
+
+	ctx := r.Context()
+
+	note, err := s.Freshdesk.CreateNote(ctx, ticketID, body, true)
+	if err != nil {
+		slog.Error("create note on freshdesk", "ticket_id", ticketID, "error", err)
+		http.Error(w, "Failed to create note on Freshdesk", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("created private note", "ticket_id", ticketID)
+
+	// Invalidate caches so the page reload shows the new note.
+	_ = s.Cache.Delete(ctx, fmt.Sprintf("conversations:%d", ticketID))
+	_ = s.Cache.Delete(ctx, fmt.Sprintf("ticket:%d", ticketID))
+
+	// If htmx request, return the new note as a partial.
+	if r.Header.Get("HX-Request") == "true" {
+		entry := ConversationView{
+			ID:         note.ID,
+			Body:       template.HTML(note.Body),
+			SenderName: "You",
+			Private:    true,
+			CreatedAt:  note.CreatedAt,
+			TimeSince:  timeSince(note.CreatedAt),
+		}
+		s.renderPartialCtx(ctx, w, "note-entry", entry)
+		return
+	}
+
+	// Non-htmx fallback: redirect.
+	http.Redirect(w, r, fmt.Sprintf("/ticket/%d", ticketID), http.StatusSeeOther)
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +498,7 @@ func (s *Server) HandleTicketPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.renderPartial(w, "ticket-preview", data); err != nil {
+	if err := s.renderPartialCtx(r.Context(), w, "ticket-preview", data); err != nil {
 		slog.Warn("render ticket preview", "error", err)
 	}
 }

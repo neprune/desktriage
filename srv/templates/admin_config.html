@@ -15,6 +15,7 @@
   {{end}}
 
   <form method="POST" action="/admin/config" class="config-form">
+    <input type="hidden" name="_csrf" value="{{csrfToken}}">
     {{range .Keys}}
     <div class="config-field">
       <label for="cfg_{{.Key}}">{{.Key}}</label>
@@ -54,7 +55,7 @@
                     hx-delete="/admin/sprint-anchor/{{.Year}}/{{.Number}}"
                     hx-confirm="Delete anchor S{{.Number}} ({{.Year}})?"                    hx-target="body"
                     hx-swap="innerHTML"
-                    onclick="event.preventDefault(); if(confirm('Delete anchor S{{.Number}} ({{.Year}})?')) { fetch('/admin/sprint-anchor/{{.Year}}/{{.Number}}', {method:'DELETE'}).then(()=>window.location='/admin/config?saved=1') }"
+                    onclick="event.preventDefault(); if(confirm('Delete anchor S{{.Number}} ({{.Year}})?')) { fetch('/admin/sprint-anchor/{{.Year}}/{{.Number}}', {method:'DELETE',headers:{'X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content}}).then(()=>window.location='/admin/config?saved=1') }"
             >✕</button>
           </td>
         </tr>
@@ -66,6 +67,7 @@
     {{end}}
 
     <form method="POST" action="/admin/sprint-anchor" class="anchor-form">
+      <input type="hidden" name="_csrf" value="{{csrfToken}}">
       <div class="anchor-form-fields">
         <div class="config-field">
           <label for="anchor_year">Year</label>
@@ -99,7 +101,7 @@
           <td>{{.AgentName}}</td>
           <td>
             <button class="btn btn-sm btn-danger"
-                    onclick="event.preventDefault(); if(confirm('Remove {{.AgentName}} from {{.CompanyName}}?')) { fetch('/admin/account-manager/{{.CompanyID}}/{{.AgentID}}', {method:'DELETE'}).then(()=>window.location='/admin/config?saved=1') }"
+                    onclick="event.preventDefault(); if(confirm('Remove {{.AgentName}} from {{.CompanyName}}?')) { fetch('/admin/account-manager/{{.CompanyID}}/{{.AgentID}}', {method:'DELETE',headers:{'X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content}}).then(()=>window.location='/admin/config?saved=1') }"
             >✕</button>
           </td>
         </tr>
@@ -111,6 +113,7 @@
     {{end}}
 
     <form method="POST" action="/admin/account-manager" class="anchor-form">
+      <input type="hidden" name="_csrf" value="{{csrfToken}}">
       <div class="anchor-form-fields">
         <div class="config-field">
           <label for="am_company">Company</label>

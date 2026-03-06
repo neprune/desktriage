@@ -385,6 +385,70 @@ func TestBasicAuth(t *testing.T) {
 	}
 }
 
+func TestCreateNote(t *testing.T) {
+	wantConv := Conversation{
+		ID:       9001,
+		Body:     "<p>This is a private note</p>",
+		BodyText: "This is a private note",
+		Private:  true,
+		UserID:   42,
+		TicketID: 6716,
+	}
+
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		// Verify method.
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		// Verify path.
+		if r.URL.Path != "/api/v2/tickets/6716/notes" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		// Verify Authorization header is present (Basic auth).
+		if auth := r.Header.Get("Authorization"); !strings.HasPrefix(auth, "Basic ") {
+			t.Errorf("expected Basic auth header, got %q", auth)
+		}
+		// Verify JSON body.
+		var reqBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		if _, ok := reqBody["body"]; !ok {
+			t.Errorf("request body missing 'body' field")
+		}
+		if reqBody["body"] != "This is a private note" {
+			t.Errorf("body = %q, want %q", reqBody["body"], "This is a private note")
+		}
+		if reqBody["private"] != true {
+			t.Errorf("private = %v, want true", reqBody["private"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write(mustJSON(t, wantConv))
+	})
+
+	got, err := client.CreateNote(context.Background(), 6716, "This is a private note", true)
+	if err != nil {
+		t.Fatalf("CreateNote returned error: %v", err)
+	}
+	if got.ID != 9001 {
+		t.Errorf("ID = %d, want 9001", got.ID)
+	}
+	if got.TicketID != 6716 {
+		t.Errorf("TicketID = %d, want 6716", got.TicketID)
+	}
+	if !got.Private {
+		t.Errorf("Private = false, want true")
+	}
+	if got.BodyText != "This is a private note" {
+		t.Errorf("BodyText = %q, want %q", got.BodyText, "This is a private note")
+	}
+	if got.UserID != 42 {
+		t.Errorf("UserID = %d, want 42", got.UserID)
+	}
+}
+
 func TestListTicketsPassesParams(t *testing.T) {
 	// Verify that user-supplied query parameters are forwarded.
 	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {

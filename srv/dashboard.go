@@ -226,7 +226,7 @@ func (s *Server) fetchAllTicketCards(ctx context.Context) ([]TicketCard, map[int
 			ID:          t.ID,
 			Subject:     t.Subject,
 			Status:      t.Status,
-			StatusLabel: statusLabel(t.Status),
+			StatusLabel: s.statusLabel(ctx, t.Status),
 			CompanyName: companyNames[t.CompanyID],
 			UpdatedAt:   t.UpdatedAt,
 			TimeSince:   timeSince(t.UpdatedAt),
@@ -527,8 +527,15 @@ func truncate(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
-// statusLabel maps a Freshdesk status code to a human-readable label.
-func statusLabel(status int) string {
+// statusLabel maps a Freshdesk status code to a human-readable label
+// using cached status choices from the Freshdesk API.
+func (s *Server) statusLabel(ctx context.Context, status int) string {
+	for _, sc := range s.loadStatusChoices(ctx) {
+		if sc.Value == status {
+			return sc.Label
+		}
+	}
+	// Fallback if cache is empty or status not found.
 	switch status {
 	case 2:
 		return "Open"

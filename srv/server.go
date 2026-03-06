@@ -32,6 +32,7 @@ type Server struct {
 	StaticDir    string
 	apiSem       chan struct{} // bounds concurrent Freshdesk API calls
 	staticHash   string        // cache-busting hash of static assets
+	noteLimiter  *rateLimiter  // rate limits note creation per ticket
 }
 
 // New creates a new server with all dependencies wired up (opens its own DB).
@@ -68,6 +69,7 @@ func NewWithDB(wdb *sql.DB, cfg *config.Config) (*Server, error) {
 	})
 	srv.apiSem = make(chan struct{}, 10)
 	srv.staticHash = computeStaticHash(srv.StaticDir)
+	srv.noteLimiter = newRateLimiter()
 
 	return srv, nil
 }
@@ -81,6 +83,11 @@ func (s *Server) Serve(addr string) error {
 func (s *Server) ServeWithContext(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 
+	// Auth
+	mux.HandleFunc("GET /login", s.HandleLogin)
+	mux.HandleFunc("POST /login", s.HandleLoginSubmit)
+	mux.HandleFunc("POST /logout", s.HandleLogout)
+
 	// Pages
 	mux.HandleFunc("GET /{$}", s.HandleDashboard)
 	mux.HandleFunc("GET /today", s.HandleToday)
@@ -92,6 +99,9 @@ func (s *Server) ServeWithContext(ctx context.Context, addr string) error {
 	// API (htmx)
 	mux.HandleFunc("PUT /ticket/{id}/state", s.HandleUpdateState)
 	mux.HandleFunc("GET /ticket/{id}/preview", s.HandleTicketPreview)
+	mux.HandleFunc("POST /ticket/{id}/note", s.HandleAddNote)
+	mux.HandleFunc("POST /ticket/{id}/freshdesk-status", s.HandleUpdateFreshdeskStatus)
+	mux.HandleFunc("GET /api/status-choices", s.HandleStatusChoices)
 
 	// Admin
 	mux.HandleFunc("GET /admin/config", s.HandleAdminConfig)
@@ -115,7 +125,12 @@ func (s *Server) ServeWithContext(ctx context.Context, addr string) error {
 		staticFS.ServeHTTP(w, r)
 	}))
 
-	httpSrv := &http.Server{Addr: addr, Handler: mux}
+	// Middleware chain: auth (outermost) → csrf → router
+	var handler http.Handler = mux
+	handler = csrfMiddleware(handler)
+	handler = s.authMiddleware(handler)
+
+	httpSrv := &http.Server{Addr: addr, Handler: handler}
 
 	// Shut down gracefully when the context is cancelled.
 	go func() {
@@ -137,7 +152,7 @@ func (s *Server) HandleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.renderTemplate(w, "dashboard.html", data); err != nil {
+	if err := s.renderTemplateCtx(r.Context(), w, "dashboard.html", data); err != nil {
 		slog.Warn("render dashboard", "error", err)
 	}
 }
@@ -170,12 +185,13 @@ func computeStaticHash(dir string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))[:10]
 }
 
-func (s *Server) templateFuncMap() template.FuncMap {
+func (s *Server) templateFuncMap(ctx context.Context) template.FuncMap {
 	return template.FuncMap{
 		"staticHash":   func() string { return s.staticHash },
 		"freshdeskURL": func() string { return s.Config.FreshdeskURL },
 		"formatSize":   formatSize,
 		"hasPrefix":    strings.HasPrefix,
+		"csrfToken":    func() string { return csrfTokenFromContext(ctx) },
 	}
 }
 
@@ -192,12 +208,16 @@ func formatSize(bytes int64) string {
 }
 
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) error {
+	return s.renderTemplateCtx(context.Background(), w, name, data)
+}
+
+func (s *Server) renderTemplateCtx(ctx context.Context, w http.ResponseWriter, name string, data any) error {
 	layoutPath := filepath.Join(s.TemplatesDir, "layout.html")
 	pagePath := filepath.Join(s.TemplatesDir, name)
 	// Include all partial templates (files starting with _)
 	partials, _ := filepath.Glob(filepath.Join(s.TemplatesDir, "_*.html"))
 	files := append([]string{layoutPath, pagePath}, partials...)
-	tmpl, err := template.New("").Funcs(s.templateFuncMap()).ParseFiles(files...)
+	tmpl, err := template.New("").Funcs(s.templateFuncMap(ctx)).ParseFiles(files...)
 	if err != nil {
 		return fmt.Errorf("parse template %q: %w", name, err)
 	}
@@ -209,11 +229,15 @@ func (s *Server) renderTemplate(w http.ResponseWriter, name string, data any) er
 
 // renderPartial renders a named template block (e.g. "ticket-card") without layout.
 func (s *Server) renderPartial(w http.ResponseWriter, name string, data any) error {
+	return s.renderPartialCtx(context.Background(), w, name, data)
+}
+
+func (s *Server) renderPartialCtx(ctx context.Context, w http.ResponseWriter, name string, data any) error {
 	partials, _ := filepath.Glob(filepath.Join(s.TemplatesDir, "_*.html"))
 	if len(partials) == 0 {
 		return fmt.Errorf("no partial templates found")
 	}
-	tmpl, err := template.New("").Funcs(s.templateFuncMap()).ParseFiles(partials...)
+	tmpl, err := template.New("").Funcs(s.templateFuncMap(ctx)).ParseFiles(partials...)
 	if err != nil {
 		return fmt.Errorf("parse partials: %w", err)
 	}

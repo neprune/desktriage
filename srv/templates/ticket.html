@@ -12,7 +12,7 @@
       <h1 class="ticket-detail-subject"><a href="{{.FreshdeskURL}}" target="_blank" class="ticket-number">#{{.ID}}</a> {{.Subject}}</h1>
 
       <div class="ticket-detail-meta">
-        <span class="badge badge-status-{{.Status}}">{{.StatusLabel}}</span>
+        <span class="badge badge-status-{{.Status}}" id="status-badge">{{.StatusLabel}}</span>
         {{if .PriorityLabel}}<span class="badge badge-fd-priority badge-fd-priority-{{.Priority}}">{{.PriorityLabel}}</span>{{end}}
         {{if .SprintLabel}}<span class="badge badge-sprint{{if not .IsCurrentSprint}} badge-sprint-stale{{end}}">{{.SprintLabel}}</span>{{end}}
         {{if .CompanyName}}<span class="meta-item"><i data-lucide="building-2"></i> {{.CompanyName}}</span>{{end}}
@@ -98,10 +98,58 @@
       {{if not .Conversations}}
       <p class="empty-state">No conversations yet.</p>
       {{end}}
+
+      {{if .NoteEnabled}}
+      <div class="add-note-form conversation-entry conversation-private" id="note-form-wrapper">
+        <div class="conversation-header">
+          <span class="conversation-sender">Add Private Note</span>
+          <span class="conversation-direction badge-private">Private Note</span>
+        </div>
+        <form class="note-form" id="note-form"
+              hx-post="/ticket/{{.ID}}/note"
+              hx-target="#note-form-wrapper"
+              hx-swap="beforebegin"
+              hx-disabled-elt=".btn-add-note">
+          <input type="hidden" name="_csrf" value="{{csrfToken}}">
+          <textarea name="body" rows="4" placeholder="Write a private note…" required class="note-textarea" id="note-body"></textarea>
+          <div class="note-form-actions">
+            <span id="note-error" class="note-error"></span>
+            <button type="submit" class="btn btn-primary btn-add-note">Add Private Note</button>
+          </div>
+        </form>
+        <script>
+        (function() {
+          var key = 'note-draft-{{.ID}}';
+          var ta = document.getElementById('note-body');
+          var saved = localStorage.getItem(key);
+          if (saved) ta.value = saved;
+          ta.addEventListener('input', function() {
+            localStorage.setItem(key, ta.value);
+          });
+          document.getElementById('note-form').addEventListener('htmx:afterRequest', function(e) {
+            var errEl = document.getElementById('note-error');
+            if (e.detail.successful) {
+              localStorage.removeItem(key);
+              ta.value = '';
+              if (errEl) errEl.textContent = '';
+            } else {
+              var msg = e.detail.xhr ? e.detail.xhr.responseText : 'Network error';
+              if (errEl) errEl.textContent = msg.trim() || 'Failed to send note';
+            }
+          });
+        })();
+        </script>
+      </div>
+      {{end}}
     </div>
 
     {{/* === Sidebar (right) === */}}
     <div class="ticket-detail-sidebar">
+      {{if .StatusChangeEnabled}}
+      <div id="freshdesk-status">
+        {{template "freshdesk-status" .FreshdeskStatusData}}
+      </div>
+      {{end}}
       <div id="ticket-state">
         {{template "ticket-state" .}}
       </div>

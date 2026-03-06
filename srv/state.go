@@ -48,6 +48,13 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 	// Apply field update
 	switch field {
 	case "today":
+		if value == "toggle" {
+			if existing.Today != 0 {
+				value = "0"
+			} else {
+				value = "1"
+			}
+		}
 		if value == "1" {
 			existing.Today = 1
 			existing.ReviewAfter = nil // clear any pending review date
@@ -91,9 +98,10 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 		// but not in the active queue either.
 		existing.Priority = -1
 	case "defer_tomorrow":
-		// Unset today and set review_after to tomorrow.
+		// Unset today and set review_after to next weekday.
 		existing.Today = 0
-		tomorrow := time.Now().AddDate(0, 0, 1).Truncate(24 * time.Hour).Format(time.RFC3339)
+		next := nextWeekday(time.Now())
+		tomorrow := next.Format(time.RFC3339)
 		existing.ReviewAfter = &tomorrow
 		nowStr := time.Now().UTC().Format(time.RFC3339)
 		existing.DeferredAt = &nowStr
@@ -146,7 +154,7 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 	if from == "ticket" {
 		stateData := s.buildTicketStateData(r.Context(), ticketID)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := s.renderPartial(w, "ticket-state", stateData); err != nil {
+		if err := s.renderPartialCtx(r.Context(), w, "ticket-state", stateData); err != nil {
 			slog.Warn("render ticket-state partial", "error", err)
 		}
 		return
@@ -161,7 +169,7 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.renderPartial(w, "ticket-card", card); err != nil {
+	if err := s.renderPartialCtx(r.Context(), w, "ticket-card", card); err != nil {
 		slog.Warn("render ticket card partial", "error", err)
 	}
 }
@@ -234,7 +242,7 @@ func (s *Server) buildTicketCard(ctx context.Context, ticketID int64) (*TicketCa
 		ID:          found.ID,
 		Subject:     found.Subject,
 		Status:      found.Status,
-		StatusLabel: statusLabel(found.Status),
+		StatusLabel: s.statusLabel(ctx, found.Status),
 		CompanyName: companyName,
 		UpdatedAt:   found.UpdatedAt,
 		TimeSince:   timeSince(found.UpdatedAt),
@@ -272,4 +280,13 @@ func (s *Server) buildTicketCard(ctx context.Context, ticketID int64) (*TicketCa
 	}
 
 	return card, nil
+}
+
+// nextWeekday returns the next Mon–Fri after now, truncated to midnight.
+func nextWeekday(now time.Time) time.Time {
+	next := now.AddDate(0, 0, 1).Truncate(24 * time.Hour)
+	for next.Weekday() == time.Saturday || next.Weekday() == time.Sunday {
+		next = next.AddDate(0, 0, 1)
+	}
+	return next
 }

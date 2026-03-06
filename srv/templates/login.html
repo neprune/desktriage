@@ -1,0 +1,28 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeskTriage — Login</title>
+  <link rel="icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css?v={{staticHash}}">
+</head>
+<body>
+  <main class="login-page">
+    <div class="login-card">
+      <h1 class="login-title">DeskTriage</h1>
+      {{if .Error}}
+      <div class="flash flash-error">{{.Error}}</div>
+      {{end}}
+      <form method="POST" action="/login" class="login-form">
+        <input type="hidden" name="_csrf" value="{{csrfToken}}">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autofocus class="config-input">
+        <button type="submit" class="btn btn-add-note" style="width:100%;margin-top:0.5rem;">Log in</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>
+{{end}}

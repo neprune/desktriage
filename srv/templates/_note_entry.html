@@ -1,0 +1,10 @@
+{{define "note-entry"}}
+<div class="conversation-entry conversation-private" data-convo-id="{{.ID}}">
+  <div class="conversation-header">
+    <span class="conversation-sender">{{.SenderName}}</span>
+    <span class="conversation-direction badge-private">Private Note</span>
+    <span class="conversation-time conversation-toggle" title="Click to collapse/expand">{{.CreatedAt.Format "Jan 2, 2006 3:04 PM"}} · {{.TimeSince}}</span>
+  </div>
+  <div class="conversation-body">{{.Body}}</div>
+</div>
+{{end}}

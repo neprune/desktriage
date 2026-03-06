@@ -304,3 +304,34 @@ func TestUpdateState_FromTicket_Priority(t *testing.T) {
 		t.Errorf("priority: want 2, got %d", st.Priority)
 	}
 }
+
+func TestNextWeekday(t *testing.T) {
+	cases := []struct {
+		name    string
+		now     time.Time
+		wantDay time.Weekday
+		wantOff int // expected days ahead
+	}{
+		{"Monday", date(2026, 3, 2), time.Tuesday, 1},    // Mon -> Tue
+		{"Thursday", date(2026, 3, 5), time.Friday, 1},    // Thu -> Fri
+		{"Friday", date(2026, 3, 6), time.Monday, 3},      // Fri -> Mon
+		{"Saturday", date(2026, 3, 7), time.Monday, 2},    // Sat -> Mon
+		{"Sunday", date(2026, 3, 8), time.Monday, 1},      // Sun -> Mon
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := nextWeekday(tc.now)
+			if got.Weekday() != tc.wantDay {
+				t.Errorf("weekday: want %s, got %s", tc.wantDay, got.Weekday())
+			}
+			want := tc.now.AddDate(0, 0, tc.wantOff).Truncate(24 * time.Hour)
+			if !got.Equal(want) {
+				t.Errorf("date: want %s, got %s", want, got)
+			}
+		})
+	}
+}
+
+func date(y, m, d int) time.Time {
+	return time.Date(y, time.Month(m), d, 14, 30, 0, 0, time.UTC)
+}

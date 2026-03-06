@@ -16,7 +16,7 @@ import (
 const (
 	KeyFreshdeskURL    = "freshdesk_url"
 	KeyFreshdeskKey    = "freshdesk_key"
-	KeyFreshdeskCookie = "freshdesk_cookie"
+	KeySessionPassword = "session_password"
 )
 
 // ConfigDef describes a config key with its description.
@@ -30,8 +30,8 @@ type ConfigDef struct {
 // KnownKeys lists all recognised configuration keys in display order.
 var KnownKeys = []ConfigDef{
 	{Key: KeyFreshdeskURL, Description: "Freshdesk API base URL", Required: true},
-	{Key: KeyFreshdeskKey, Description: "Freshdesk API key", Required: true, Sensitive: true},
-	{Key: KeyFreshdeskCookie, Description: "Optional cookie header for Freshdesk requests", Sensitive: true},
+	{Key: KeyFreshdeskKey, Description: "Freshdesk API key", Required: true},
+	{Key: KeySessionPassword, Description: "Password for DeskTriage login (leave blank to disable auth)", Sensitive: true},
 }
 
 // Config holds all application configuration.
@@ -78,9 +78,9 @@ func SeedFromEnv(ctx context.Context, q *dbgen.Queries, envPath string) (int, er
 		ConfigKey   string
 		Description string
 	}{
-		"FRESHDESK_URL":    {KeyFreshdeskURL, "Freshdesk API base URL"},
-		"FRESHDESK_KEY":    {KeyFreshdeskKey, "Freshdesk API key"},
-		"FRESHDESK_COOKIE": {KeyFreshdeskCookie, "Optional cookie header for Freshdesk requests"},
+		"FRESHDESK_URL":  {KeyFreshdeskURL, "Freshdesk API base URL"},
+		"FRESHDESK_KEY":  {KeyFreshdeskKey, "Freshdesk API key"},
+		"SESSION_SECRET": {KeySessionPassword, "Password for DeskTriage login"},
 	}
 
 	seeded := 0

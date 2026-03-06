@@ -338,3 +338,107 @@ func (c *Client) ListAgents(ctx context.Context) ([]Agent, error) {
 func (c *Client) ListCompanies(ctx context.Context) ([]Company, error) {
 	return paginate[Company](c, ctx, "/api/v2/companies", nil)
 }
+
+// TicketField represents a Freshdesk ticket field definition.
+type TicketField struct {
+	ID      int64           `json:"id"`
+	Name    string          `json:"name"`
+	Label   string          `json:"label"`
+	Type    string          `json:"type"`
+	Choices json.RawMessage `json:"choices"` // shape varies by field type
+}
+
+// StatusChoice represents a single Freshdesk status option.
+type StatusChoice struct {
+	Label string `json:"label"`
+	Value int    `json:"value"`
+}
+
+// GetTicketFields retrieves all ticket field definitions.
+func (c *Client) GetTicketFields(ctx context.Context) ([]TicketField, error) {
+	return paginate[TicketField](c, ctx, "/api/v2/ticket_fields", nil)
+}
+
+// ParseStatusChoices extracts status choices from the ticket fields list.
+// The Freshdesk status field choices are a map with string keys (status code)
+// and array values: {"2": ["Open", "Being Processed"], "3": ["Pending", "..."], ...}
+// The first element of each array is the agent-facing label.
+func ParseStatusChoices(fields []TicketField) []StatusChoice {
+	for _, f := range fields {
+		if f.Name != "status" || f.Choices == nil {
+			continue
+		}
+
+		// Try parsing as map of string -> []string (Freshdesk status format)
+		var choicesMap map[string][]string
+		if err := json.Unmarshal(f.Choices, &choicesMap); err == nil {
+			var choices []StatusChoice
+			for codeStr, labels := range choicesMap {
+				code, err := strconv.Atoi(codeStr)
+				if err != nil || len(labels) == 0 {
+					continue
+				}
+				choices = append(choices, StatusChoice{Label: labels[0], Value: code})
+			}
+			sortStatusChoices(choices)
+			return choices
+		}
+
+		return nil
+	}
+	return nil
+}
+
+// sortStatusChoices sorts choices by their numeric value.
+func sortStatusChoices(choices []StatusChoice) {
+	for i := 1; i < len(choices); i++ {
+		for j := i; j > 0 && choices[j].Value < choices[j-1].Value; j-- {
+			choices[j], choices[j-1] = choices[j-1], choices[j]
+		}
+	}
+}
+
+// UpdateTicketStatus sets the status field on a Freshdesk ticket.
+func (c *Client) UpdateTicketStatus(ctx context.Context, ticketID int64, status int) error {
+	payload := struct {
+		Status int `json:"status"`
+	}{
+		Status: status,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("freshdesk: marshalling status payload: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v2/tickets/%d", ticketID)
+	resp, err := c.doRequest(ctx, http.MethodPut, path, strings.NewReader(string(data)))
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+// CreateNote adds a note (private or public) to a Freshdesk ticket.
+func (c *Client) CreateNote(ctx context.Context, ticketID int64, body string, private bool) (*Conversation, error) {
+	payload := struct {
+		Body    string `json:"body"`
+		Private bool   `json:"private"`
+	}{
+		Body:    body,
+		Private: private,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("freshdesk: marshalling note payload: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v2/tickets/%d/notes", ticketID)
+	conv, _, err := doJSON[Conversation](c, ctx, http.MethodPost, path, strings.NewReader(string(data)))
+	if err != nil {
+		return nil, err
+	}
+	return &conv, nil
+}

@@ -40,7 +40,7 @@ func (s *Server) HandleAdminConfig(w http.ResponseWriter, r *http.Request) {
 		data.Saved = true
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.renderTemplate(w, "admin_config.html", data); err != nil {
+	if err := s.renderTemplateCtx(r.Context(), w, "admin_config.html", data); err != nil {
 		slog.Warn("render admin config", "error", err)
 	}
 }
@@ -60,7 +60,7 @@ func (s *Server) HandleAdminConfigSave(w http.ResponseWriter, r *http.Request) {
 			data.Error = def.Key + " is required"
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusUnprocessableEntity)
-			if err := s.renderTemplate(w, "admin_config.html", data); err != nil {
+			if err := s.renderTemplateCtx(r.Context(), w, "admin_config.html", data); err != nil {
 				slog.Warn("render admin config", "error", err)
 			}
 			return

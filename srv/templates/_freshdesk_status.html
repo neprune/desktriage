@@ -1,0 +1,21 @@
+{{define "freshdesk-status"}}
+<div class="state-panel freshdesk-status-panel">
+  <h3 class="state-panel-title">Freshdesk Status</h3>
+  <div class="state-row freshdesk-status-row">
+    <select name="status" class="input-status-select" id="freshdesk-status-select">
+      {{range .Statuses}}
+      <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+      {{end}}
+    </select>
+    <button class="btn btn-state"
+            hx-post="/ticket/{{.ID}}/freshdesk-status"
+            hx-target="#freshdesk-status"
+            hx-swap="innerHTML"
+            hx-include="#freshdesk-status-select">Update</button>
+  </div>
+</div>
+{{end}}
+
+{{define "freshdesk-status-badge"}}
+<span class="badge badge-status-{{.Status}}" id="status-badge" hx-swap-oob="outerHTML:#status-badge">{{.StatusLabel}}</span>
+{{end}}

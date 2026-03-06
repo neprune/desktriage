@@ -29,9 +29,17 @@
       <button class="btn-icon btn-note"
               title="Edit note"
               onclick="toggleNote(this)"><i data-lucide="sticky-note"></i></button>
-      <button class="btn-icon btn-review"
-              title="Set review date"
-              onclick="toggleReview(this)"><i data-lucide="calendar"></i></button>
+      <button class="btn-icon btn-defer"
+              title="Defer to next weekday"
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "defer_tomorrow", "value": ""}'
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="arrow-right"></i></button>
+      <button class="btn-icon btn-defer-sprint" hidden
+              hx-put="/ticket/{{.ID}}/state"
+              hx-vals='{"field": "defer_next_sprint", "value": ""}'
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="fast-forward"></i></button>
       {{if gt .Priority 0}}
       <button class="btn-icon" title="Remove from queue"
               hx-put="/ticket/{{.ID}}/state"
@@ -65,22 +73,6 @@
            hx-include="this"
            name="value">
   </div>
-  <div class="ticket-row ticket-row-edit ticket-review-edit" style="display:none">
-    <input type="date" class="input-review" value="{{if .ReviewAfter}}{{.ReviewAfter.Format "2006-01-02"}}{{end}}"
-           hx-put="/ticket/{{.ID}}/state"
-           hx-vals='{"field": "review_after"}'
-           hx-target="#ticket-{{.ID}}"
-           hx-swap="outerHTML"
-           hx-trigger="change"
-           hx-include="this"
-           name="value">
-    {{if .ReviewAfter}}
-    <button class="btn btn-sm btn-clear"
-            hx-put="/ticket/{{.ID}}/state"
-            hx-vals='{"field": "review_after", "value": ""}'
-            hx-target="#ticket-{{.ID}}"
-            hx-swap="outerHTML">Clear</button>
-    {{end}}
-  </div>
+
 </div>
 {{end}}

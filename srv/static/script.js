@@ -21,21 +21,14 @@ function toggleNote(btn) {
 }
 
 // Toggle inline review-after date picker
-function toggleReview(btn) {
-  var card = btn.closest('.ticket-card');
-  var edit = card.querySelector('.ticket-review-edit');
-  var isVisible = edit.style.display !== 'none';
-  // Close all open editors in this card
-  card.querySelectorAll('.ticket-row-edit').forEach(function(el) { el.style.display = 'none'; });
-  if (!isVisible) {
-    edit.style.display = 'flex';
-    edit.querySelector('input').focus();
-  }
-}
+
 
 // ---------------------------------------------------------------------------
 // Keyboard shortcut system
 // ---------------------------------------------------------------------------
+// Shared namespace for cross-IIFE communication
+window.DeskTriage = window.DeskTriage || {};
+
 (function() {
   'use strict';
 
@@ -116,6 +109,12 @@ function toggleReview(btn) {
     return m ? m[1] : null;
   }
 
+  // Expose for command palette
+  window.DeskTriage.getFocusedTicketId = function() {
+    var card = getFocusedCard();
+    return card ? parseTicketId(card) : null;
+  };
+
   // --- Close editors in a card ---------------------------------------------
 
   function closeEditors(card) {
@@ -134,14 +133,14 @@ function toggleReview(btn) {
     ['Opt+Enter', 'Open ticket in Freshdesk'],
     ['Space', 'Expand/collapse ticket preview'],
     ['\u2190', 'Toggle Today'],
-    ['\u2192', 'Defer to tomorrow'],
+    ['\u2192', 'Defer to next weekday'],
     ['Shift+\u2192', 'Defer to next sprint'],
     ['t', 'Toggle Today'],
     ['b', 'Toggle Blocked'],
     ['p', 'Toggle Priority / Queue'],
     ['n', 'Open note editor'],
-    ['r', 'Open review date editor'],
     ['?', 'Toggle this help'],
+    ['⌘+Shift+P', 'Command palette'],
     ['Escape', 'Close overlay / clear focus']
   ];
 
@@ -306,103 +305,8 @@ function toggleReview(btn) {
       });
   }
 
-  // --- Defer to tomorrow (right arrow) --------------------------------------
 
-  function deferTomorrow(card) {
-    if (!card) return;
-    var id = parseTicketId(card);
-    if (!id) return;
 
-    // Use htmx to issue the PUT request
-    var body = new URLSearchParams();
-    body.set('field', 'defer_tomorrow');
-    body.set('value', '');
-
-    // Find which view context we're in
-    var from = '';
-    if (card.closest('.focus')) from = 'focus';
-    if (from) body.set('from', from);
-
-    // Detach preview so we can re-attach after swap
-    var preview = card.querySelector('.ticket-preview');
-    if (preview) preview.remove();
-
-    fetch('/ticket/' + id + '/state', {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body.toString()
-    })
-      .then(function(resp) {
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return resp.text();
-      })
-      .then(function(html) {
-        if (from === 'focus' && !html.trim()) {
-          // Card removed from focus view
-          card.remove();
-          return;
-        }
-        if (html.trim()) {
-          var temp = document.createElement('div');
-          temp.innerHTML = html;
-          var newCard = temp.firstElementChild;
-          if (newCard) {
-            card.replaceWith(newCard);
-            newCard.classList.add('kb-focused');
-            if (preview) newCard.appendChild(preview);
-          }
-        }
-      })
-      .catch(function() {
-        // Silently fail — the error banner handler will catch network issues
-      });
-  }
-
-  // --- Defer to next sprint (Shift + right arrow) ---------------------------
-
-  function deferNextSprint(card) {
-    if (!card) return;
-    var id = parseTicketId(card);
-    if (!id) return;
-
-    var body = new URLSearchParams();
-    body.set('field', 'defer_next_sprint');
-    body.set('value', '');
-
-    var from = '';
-    if (card.closest('.focus')) from = 'focus';
-    if (from) body.set('from', from);
-
-    var preview = card.querySelector('.ticket-preview');
-    if (preview) preview.remove();
-
-    fetch('/ticket/' + id + '/state', {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body.toString()
-    })
-      .then(function(resp) {
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return resp.text();
-      })
-      .then(function(html) {
-        if (from === 'focus' && !html.trim()) {
-          card.remove();
-          return;
-        }
-        if (html.trim()) {
-          var temp = document.createElement('div');
-          temp.innerHTML = html;
-          var newCard = temp.firstElementChild;
-          if (newCard) {
-            card.replaceWith(newCard);
-            newCard.classList.add('kb-focused');
-            if (preview) newCard.appendChild(preview);
-          }
-        }
-      })
-      .catch(function() {});
-  }
 
   // --- Main keydown handler -------------------------------------------------
 
@@ -535,13 +439,6 @@ function toggleReview(btn) {
       return;
     }
 
-    if (key === 'r') {
-      e.preventDefault();
-      var reviewBtn = focused.querySelector('.btn-review');
-      if (reviewBtn) toggleReview(reviewBtn);
-      return;
-    }
-
     // --- Spacebar: expand/collapse ticket preview ---
     if (key === ' ') {
       e.preventDefault();
@@ -559,14 +456,14 @@ function toggleReview(btn) {
     // --- Shift+Right arrow: defer to next sprint ---
     if (key === 'ArrowRight' && e.shiftKey) {
       e.preventDefault();
-      deferNextSprint(focused);
+      clickCardButton(focused, 'fast-forward');
       return;
     }
 
     // --- Right arrow: defer to tomorrow ---
     if (key === 'ArrowRight') {
       e.preventDefault();
-      deferTomorrow(focused);
+      clickCardButton(focused, 'arrow-right');
       return;
     }
   });
@@ -710,6 +607,346 @@ function toggleReview(btn) {
 
   document.body.addEventListener('htmx:sendError', function() {
     showError('Network error — could not reach the server.');
+  });
+})();
+
+// ---------------------------------------------------------------------------
+// Command Palette
+// ---------------------------------------------------------------------------
+(function() {
+  'use strict';
+
+  var overlay = null;
+  var input = null;
+  var resultsList = null;
+  var activeIndex = 0;
+  var currentResults = [];
+  var debounceId = 0;
+
+  // -- Static command sources ------------------------------------------------
+
+  var staticCommands = [
+    { label: 'Go to Dashboard', action: function() { window.location.href = '/'; } },
+    { label: 'Go to Today',     action: function() { window.location.href = '/today'; } },
+    { label: 'Hard refresh',    action: function() {
+      var form = document.querySelector('form[action="/refresh"]');
+      if (form) form.submit();
+    }}
+  ];
+
+  // Command sources: each is fn(query) -> Result[] | Promise<Result[]>
+  // Results are merged in source order; first source results appear first.
+  var sources = [
+    // Dynamic "Go to ticket #N" when query is numeric
+    function ticketByNumber(q) {
+      var trimmed = q.replace(/^#/, '').trim();
+      if (/^\d+$/.test(trimmed) && trimmed.length > 0) {
+        return [{ label: 'Go to ticket #' + trimmed, action: function() { window.location.href = '/ticket/' + trimmed; } }];
+      }
+      return [];
+    },
+    // Fuzzy-filtered static commands
+    function filteredStatic(q) {
+      var lower = q.toLowerCase();
+      if (lower === '') return staticCommands;
+      return staticCommands.filter(function(cmd) {
+        return cmd.label.toLowerCase().indexOf(lower) !== -1;
+      });
+    },
+    // Ticket state actions (when a ticket is in context)
+    ticketStateCommands,
+    // Set status to X (when a ticket is in context)
+    statusCommands
+  ];
+
+  // -- Ticket state commands source ------------------------------------------
+
+  var stateActions = [
+    { label: 'Defer to tomorrow',    field: 'defer_tomorrow',    value: '' },
+    { label: 'Defer to next sprint', field: 'defer_next_sprint', value: '' },
+    { label: 'Toggle today',         field: 'today',             value: 'toggle' }
+  ];
+
+  function ticketStateCommands(q) {
+    var ticketId = getContextTicketId();
+    if (!ticketId) return [];
+    var lower = q.toLowerCase();
+    return stateActions.filter(function(sa) {
+      return lower === '' || sa.label.toLowerCase().indexOf(lower) !== -1;
+    }).map(function(sa) {
+      return { label: sa.label, action: makeStateAction(ticketId, sa.field, sa.value) };
+    });
+  }
+
+  function makeStateAction(ticketId, field, value) {
+    return function() {
+      var csrfToken = document.querySelector('meta[name="csrf-token"]');
+      var token = csrfToken ? csrfToken.content : '';
+      var url = '/ticket/' + ticketId + '/state';
+      var vals = { field: field, value: value, _csrf: token };
+
+      if (isDetailPage()) {
+        vals.from = 'ticket';
+        htmx.ajax('PUT', url, {
+          target: '#ticket-state',
+          swap: 'innerHTML',
+          values: vals
+        });
+      } else {
+        htmx.ajax('PUT', url, {
+          target: '#ticket-' + ticketId,
+          swap: 'outerHTML',
+          values: vals
+        });
+      }
+    };
+  }
+
+  // -- Status commands source ------------------------------------------------
+
+  var cachedStatusChoices = null;
+
+  // Determine the ticket ID in context: detail page URL or focused card.
+  function getContextTicketId() {
+    var m = window.location.pathname.match(/^\/ticket\/(\d+)/);
+    if (m) return m[1];
+    if (window.DeskTriage && window.DeskTriage.getFocusedTicketId) {
+      return window.DeskTriage.getFocusedTicketId();
+    }
+    return null;
+  }
+
+  function isDetailPage() {
+    return /^\/ticket\/\d+/.test(window.location.pathname);
+  }
+
+  function fetchStatusChoices() {
+    if (cachedStatusChoices) return Promise.resolve(cachedStatusChoices);
+    return fetch('/api/status-choices').then(function(resp) {
+      if (!resp.ok) return [];
+      return resp.json();
+    }).then(function(data) {
+      cachedStatusChoices = data || [];
+      return cachedStatusChoices;
+    }).catch(function() {
+      return [];
+    });
+  }
+
+  function statusCommands(q) {
+    var ticketId = getContextTicketId();
+    if (!ticketId) return [];
+
+    return fetchStatusChoices().then(function(choices) {
+      var lower = q.toLowerCase();
+      var results = [];
+      choices.forEach(function(sc) {
+        var label = 'Set status to ' + sc.label;
+        if (lower === '' || label.toLowerCase().indexOf(lower) !== -1) {
+          results.push({
+            label: label,
+            action: makeStatusAction(ticketId, sc.value)
+          });
+        }
+      });
+      return results;
+    });
+  }
+
+  function makeStatusAction(ticketId, statusValue) {
+    return function() {
+      var csrfToken = document.querySelector('meta[name="csrf-token"]');
+      var token = csrfToken ? csrfToken.content : '';
+      var url = '/ticket/' + ticketId + '/freshdesk-status';
+
+      if (isDetailPage()) {
+        htmx.ajax('POST', url, {
+          target: '#freshdesk-status',
+          swap: 'innerHTML',
+          values: { status: statusValue, from: 'ticket', _csrf: token }
+        });
+      } else {
+        htmx.ajax('POST', url, {
+          target: '#ticket-' + ticketId,
+          swap: 'outerHTML',
+          values: { status: statusValue, from: 'list', _csrf: token }
+        });
+      }
+    };
+  }
+
+  // -- DOM construction (lazy) -----------------------------------------------
+
+  function ensureDOM() {
+    if (overlay) return;
+
+    overlay = document.createElement('div');
+    overlay.className = 'cmd-palette-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', 'Command palette');
+
+    var modal = document.createElement('div');
+    modal.className = 'cmd-palette';
+
+    input = document.createElement('input');
+    input.className = 'cmd-palette-input';
+    input.type = 'text';
+    input.placeholder = 'Type a command\u2026';
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', 'cmd-palette-results');
+
+    resultsList = document.createElement('ul');
+    resultsList.className = 'cmd-palette-results';
+    resultsList.id = 'cmd-palette-results';
+    resultsList.setAttribute('role', 'listbox');
+
+    modal.appendChild(input);
+    modal.appendChild(resultsList);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // -- Event wiring --------------------------------------------------------
+
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) close();
+    });
+
+    input.addEventListener('input', function() {
+      scheduleResolve();
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActive(activeIndex + 1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive(activeIndex - 1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeActive();
+        return;
+      }
+    });
+
+    resultsList.addEventListener('click', function(e) {
+      var li = e.target.closest('[data-index]');
+      if (!li) return;
+      var idx = parseInt(li.getAttribute('data-index'), 10);
+      if (idx >= 0 && idx < currentResults.length) {
+        close();
+        currentResults[idx].action();
+      }
+    });
+  }
+
+  // -- Resolve sources -------------------------------------------------------
+
+  function scheduleResolve() {
+    var id = ++debounceId;
+    requestAnimationFrame(function() {
+      if (id !== debounceId) return;
+      resolve();
+    });
+  }
+
+  function resolve() {
+    var q = input.value;
+    var pending = sources.map(function(src) { return src(q); });
+
+    Promise.all(pending).then(function(arrays) {
+      var merged = [];
+      arrays.forEach(function(arr) {
+        if (arr && arr.length) merged = merged.concat(arr);
+      });
+      currentResults = merged;
+      activeIndex = 0;
+      render();
+    });
+  }
+
+  // -- Render ----------------------------------------------------------------
+
+  function render() {
+    resultsList.innerHTML = '';
+    currentResults.forEach(function(cmd, i) {
+      var li = document.createElement('li');
+      li.className = 'cmd-palette-item' + (i === activeIndex ? ' active' : '');
+      li.setAttribute('role', 'option');
+      li.setAttribute('data-index', i);
+      li.textContent = cmd.label;
+      resultsList.appendChild(li);
+    });
+  }
+
+  function setActive(idx) {
+    if (currentResults.length === 0) return;
+    if (idx < 0) idx = currentResults.length - 1;
+    if (idx >= currentResults.length) idx = 0;
+    activeIndex = idx;
+    var items = resultsList.querySelectorAll('.cmd-palette-item');
+    items.forEach(function(el, i) {
+      el.classList.toggle('active', i === activeIndex);
+    });
+    if (items[activeIndex]) items[activeIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function executeActive() {
+    if (activeIndex >= 0 && activeIndex < currentResults.length) {
+      var action = currentResults[activeIndex].action;
+      close();
+      action();
+    }
+  }
+
+  // -- Open / Close ----------------------------------------------------------
+
+  function open() {
+    ensureDOM();
+    input.value = '';
+    overlay.style.display = 'flex';
+    resolve();
+    input.focus();
+  }
+
+  function close() {
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  function isOpen() {
+    return overlay && overlay.style.display !== 'none';
+  }
+
+  // -- Global keyboard trigger -----------------------------------------------
+
+  document.addEventListener('keydown', function(e) {
+    // Cmd+Shift+P (Mac) or Ctrl+Shift+P (Win/Linux)
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+      e.preventDefault();
+      if (isOpen()) {
+        close();
+      } else {
+        open();
+      }
+      return;
+    }
+    // Escape closes the palette from anywhere
+    if (e.key === 'Escape' && isOpen()) {
+      e.preventDefault();
+      close();
+    }
   });
 })();
 
