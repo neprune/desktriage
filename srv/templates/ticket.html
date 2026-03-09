@@ -114,7 +114,11 @@
           <textarea name="body" rows="4" placeholder="Write a private note…" required class="note-textarea" id="note-body"></textarea>
           <div class="note-form-actions">
             <span id="note-error" class="note-error"></span>
-            <button type="submit" class="btn btn-primary btn-add-note">Add Private Note</button>
+            <button type="submit" class="btn btn-add-note">Add Private Note</button>
+            {{if .IsAssignedToMe}}<button type="button" class="btn btn-handover"
+                    hx-post="/ticket/{{.ID}}/handover"
+                    hx-include="#note-form"
+                    hx-disabled-elt=".btn-add-note, .btn-handover">Handover</button>{{end}}
           </div>
         </form>
         <script>
@@ -127,6 +131,8 @@
             localStorage.setItem(key, ta.value);
           });
           document.getElementById('note-form').addEventListener('htmx:afterRequest', function(e) {
+            // Ignore events bubbled from the handover button.
+            if (e.detail.elt && e.detail.elt.classList.contains('btn-handover')) return;
             var errEl = document.getElementById('note-error');
             if (e.detail.successful) {
               localStorage.removeItem(key);
@@ -135,6 +141,19 @@
             } else {
               var msg = e.detail.xhr ? e.detail.xhr.responseText : 'Network error';
               if (errEl) errEl.textContent = msg.trim() || 'Failed to send note';
+            }
+          });
+          var handoverBtn = document.querySelector('.btn-handover');
+          if (handoverBtn) handoverBtn.addEventListener('htmx:afterRequest', function(e) {
+            e.stopPropagation();
+            var xhr = e.detail.xhr;
+            var ok = xhr && xhr.status >= 200 && xhr.status < 300;
+            if (ok) {
+              localStorage.removeItem(key);
+            } else {
+              var errEl = document.getElementById('note-error');
+              var msg = xhr ? xhr.responseText : 'Network error';
+              if (errEl) errEl.textContent = msg.trim() || 'Handover failed';
             }
           });
         })();

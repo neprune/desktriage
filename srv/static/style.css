@@ -1270,6 +1270,58 @@ a.ticket-number:hover {
 .btn-add-note:hover {
   opacity: 0.9;
 }
+.btn-handover {
+  background: #e67e22;
+  color: #fff;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn-handover:hover {
+  background: #d35400;
+}
+.btn-handover:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* --- Handover dialog --- */
+.handover-dialog-title {
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
+}
+.handover-dialog-textarea {
+  display: block;
+  width: 100%;
+  padding: 14px 18px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.handover-dialog-textarea::placeholder {
+  color: var(--text-muted);
+}
+.handover-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 10px 18px;
+}
+.handover-dialog-actions .note-error {
+  flex: 1;
+}
 
 /* --- Login page --- */
 .login-page {

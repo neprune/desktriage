@@ -656,7 +656,9 @@ window.DeskTriage = window.DeskTriage || {};
     // Ticket state actions (when a ticket is in context)
     ticketStateCommands,
     // Set status to X (when a ticket is in context)
-    statusCommands
+    statusCommands,
+    // Handover (when focused ticket is assigned to current agent)
+    handoverCommand
   ];
 
   // -- Ticket state commands source ------------------------------------------
@@ -773,6 +775,144 @@ window.DeskTriage = window.DeskTriage || {};
         });
       }
     };
+  }
+
+  // -- Handover command source ------------------------------------------------
+
+  function getFocusedCard() {
+    if (window.DeskTriage && window.DeskTriage.getFocusedTicketId) {
+      var id = window.DeskTriage.getFocusedTicketId();
+      return id ? document.getElementById('ticket-' + id) : null;
+    }
+    return null;
+  }
+
+  function handoverCommand(q) {
+    if (isDetailPage()) return []; // handled by the ticket detail page button
+    var lower = q.toLowerCase();
+    if (lower !== '' && 'handover'.indexOf(lower) === -1) return [];
+    var card = getFocusedCard();
+    if (!card || !card.hasAttribute('data-assigned')) return [];
+    var ticketId = card.id.replace('ticket-', '');
+    return [{
+      label: 'Handover',
+      action: function() { showHandoverDialog(ticketId); }
+    }];
+  }
+
+  // -- Handover dialog --------------------------------------------------------
+
+  var handoverOverlay = null;
+
+  function showHandoverDialog(ticketId) {
+    if (handoverOverlay) handoverOverlay.remove();
+
+    handoverOverlay = document.createElement('div');
+    handoverOverlay.className = 'cmd-palette-overlay';
+    handoverOverlay.style.display = 'flex';
+
+    var modal = document.createElement('div');
+    modal.className = 'cmd-palette';
+
+    var title = document.createElement('div');
+    title.className = 'handover-dialog-title';
+    title.textContent = 'Handover #' + ticketId;
+
+    var textarea = document.createElement('textarea');
+    textarea.className = 'handover-dialog-textarea';
+    textarea.placeholder = 'Write a private note\u2026';
+    textarea.rows = 5;
+
+    var actions = document.createElement('div');
+    actions.className = 'handover-dialog-actions';
+
+    var errorEl = document.createElement('span');
+    errorEl.className = 'note-error';
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.type = 'button';
+
+    var submitBtn = document.createElement('button');
+    submitBtn.className = 'btn btn-handover';
+    submitBtn.textContent = 'Handover';
+    submitBtn.type = 'button';
+
+    actions.appendChild(errorEl);
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+    modal.appendChild(title);
+    modal.appendChild(textarea);
+    modal.appendChild(actions);
+    handoverOverlay.appendChild(modal);
+    document.body.appendChild(handoverOverlay);
+
+    textarea.focus();
+
+    function closeDialog() {
+      if (handoverOverlay) {
+        handoverOverlay.remove();
+        handoverOverlay = null;
+      }
+    }
+
+    function submit() {
+      var body = textarea.value.trim();
+      if (!body) {
+        errorEl.textContent = 'Note body cannot be empty';
+        return;
+      }
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      textarea.disabled = true;
+      errorEl.textContent = '';
+
+      var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+      var token = csrfMeta ? csrfMeta.content : '';
+
+      fetch('/ticket/' + ticketId + '/handover', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRF-Token': token
+        },
+        body: 'body=' + encodeURIComponent(body) + '&from=list'
+      }).then(function(resp) {
+        if (!resp.ok) {
+          return resp.text().then(function(msg) { throw new Error(msg.trim() || 'Handover failed'); });
+        }
+        closeDialog();
+        // Grey out the ticket card (same as deferred)
+        var card = document.getElementById('ticket-' + ticketId);
+        if (card) {
+          card.classList.add('is-deferred');
+          card.removeAttribute('data-assigned');
+        }
+      }).catch(function(err) {
+        errorEl.textContent = err.message || 'Handover failed';
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+        textarea.disabled = false;
+      });
+    }
+
+    cancelBtn.addEventListener('click', closeDialog);
+    handoverOverlay.addEventListener('click', function(e) {
+      if (e.target === handoverOverlay) closeDialog();
+    });
+    submitBtn.addEventListener('click', submit);
+    textarea.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDialog();
+      }
+      if (e.key === 'Enter' && e.metaKey) {
+        e.preventDefault();
+        submit();
+      }
+    });
   }
 
   // -- DOM construction (lazy) -----------------------------------------------

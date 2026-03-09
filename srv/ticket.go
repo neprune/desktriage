@@ -81,6 +81,7 @@ type TicketDetailData struct {
 	// Feature flags
 	NoteEnabled          bool // whether the "Add Note" form should appear
 	StatusChangeEnabled  bool // whether the Freshdesk status dropdown should appear
+	IsAssignedToMe       bool // whether the ticket is assigned to the current agent
 	FreshdeskStatusData  *FreshdeskStatusData // data for the freshdesk-status partial
 }
 
@@ -318,6 +319,7 @@ func (s *Server) HandleTicketDetail(w http.ResponseWriter, r *http.Request) {
 		IsCurrentSprint: isCurrentSprint,
 		NoteEnabled:         true,
 		StatusChangeEnabled: true,
+		IsAssignedToMe:      ticket.ResponderID == s.AgentID,
 		FreshdeskStatusData: freshdeskStatusData,
 	}
 
@@ -390,6 +392,77 @@ func (s *Server) HandleAddNote(w http.ResponseWriter, r *http.Request) {
 
 	// Non-htmx fallback: redirect.
 	http.Redirect(w, r, fmt.Sprintf("/ticket/%d", ticketID), http.StatusSeeOther)
+}
+
+// ---------------------------------------------------------------------------
+// Handover (add note + unassign + clear local state)
+// ---------------------------------------------------------------------------
+
+// HandleHandover adds a private note, unassigns the agent, and clears local state.
+func (s *Server) HandleHandover(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	ticketID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid ticket ID", http.StatusBadRequest)
+		return
+	}
+
+	body := strings.TrimSpace(r.FormValue("body"))
+	if body == "" {
+		http.Error(w, "Note body cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxNoteLen {
+		http.Error(w, fmt.Sprintf("Note body too long (max %d characters)", maxNoteLen), http.StatusBadRequest)
+		return
+	}
+
+	if !s.noteLimiter.Allow(ticketID, 5*time.Second) {
+		http.Error(w, "Please wait a few seconds before retrying", http.StatusTooManyRequests)
+		return
+	}
+
+	ctx := r.Context()
+
+	// 1. Create private note.
+	_, err = s.Freshdesk.CreateNote(ctx, ticketID, body, true)
+	if err != nil {
+		slog.Error("handover: create note", "ticket_id", ticketID, "error", err)
+		http.Error(w, "Failed to create note on Freshdesk", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Unassign agent.
+	if err := s.Freshdesk.UnassignTicket(ctx, ticketID); err != nil {
+		slog.Error("handover: unassign ticket", "ticket_id", ticketID, "error", err)
+		http.Error(w, "Note was added but failed to unassign ticket", http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Clear all local state.
+	if err := s.Queries.DeleteTicketState(ctx, ticketID); err != nil {
+		slog.Error("handover: delete local state", "ticket_id", ticketID, "error", err)
+		// Non-fatal: the Freshdesk operations succeeded.
+	}
+
+	slog.Info("handed over ticket", "ticket_id", ticketID)
+
+	// Invalidate caches.
+	_ = s.Cache.Delete(ctx, fmt.Sprintf("conversations:%d", ticketID))
+	_ = s.Cache.Delete(ctx, fmt.Sprintf("ticket:%d", ticketID))
+
+	// Response depends on caller context.
+	if r.FormValue("from") == "list" {
+		// Called from dashboard command palette — just return 200.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // ---------------------------------------------------------------------------

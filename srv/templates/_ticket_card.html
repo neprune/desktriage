@@ -1,6 +1,6 @@
 {{define "ticket-card"}}
 <div class="ticket-card{{if eq .LastUpdater "client"}} needs-response{{end}}{{if .Blocked}} is-blocked{{end}}{{if .ReviewDeferred}} is-deferred{{end}}{{if .ReviewDue}} is-review-due{{end}}{{if and .SprintLabel (not .IsCurrentSprint)}} is-stale-sprint{{end}}"
-     id="ticket-{{.ID}}">
+     id="ticket-{{.ID}}"{{if .IsAssigned}} data-assigned="1"{{end}}>
   <div class="ticket-row ticket-row-main">
     <span class="badge badge-status-{{.Status}}">{{.StatusLabel}}</span>
     <a class="ticket-subject" href="/ticket/{{.ID}}"><span class="ticket-number">#{{.ID}}</span> {{.Subject}}</a>
