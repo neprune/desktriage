@@ -1,5 +1,8 @@
 # DeskTriage
 
+> [!CAUTION]
+> **This is 100% vibe-coded slop.** It was built entirely through AI-assisted prompting with no human code review, no design process, and no quality standards whatsoever. It should not be used by anyone, for any reason, ever. If you are reading this, close the tab. If you have already deployed it, stop what you are doing and delete it immediately. You have been warned.
+
 A Go web application for managing Freshdesk support tickets. Provides a dashboard with prioritised sections (Today, Review Now, For Later, Historic), a Today focus view, per-ticket local state tracking, and a detailed ticket view with conversation threading.
 
 ## Building and Running
@@ -85,14 +88,33 @@ A focused view showing only Today tickets, with keyboard navigation.
 - Freshdesk status changes directly from the detail page (htmx)
 - Local state editing (flag, defer, notes)
 
+### Command Palette
+
+Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` to open the command palette. Supports fuzzy filtering and includes:
+
+- Navigation (go to dashboard, today view, ticket by number)
+- Ticket actions (defer, today, handover, status changes)
+- Hard refresh
+
+### Handover
+
+Hand a ticket off to another agent: adds a private note to Freshdesk, unassigns the ticket, and clears all local state. Available from the ticket detail page and the command palette.
+
+### Auto-Assign
+
+Marking a ticket as "Today" automatically assigns it to the current agent on Freshdesk (skipped if already assigned).
+
 ### Keyboard Shortcuts
 
 - `j`/`k` or `↑`/`↓` — navigate between tickets
-- `Space` — toggle preview
+- `Space` — toggle inline preview
 - `Enter` — open ticket detail
 - `Opt+Enter` — open ticket in Freshdesk
 - `d` — defer to tomorrow (skips weekends)
 - `t` — flag for today
+- `b` — toggle blocked
+- `?` — show keyboard shortcuts help
+- `Cmd+Shift+P` / `Ctrl+Shift+P` — command palette
 
 ### Other Features
 
@@ -101,6 +123,7 @@ A focused view showing only Today tickets, with keyboard navigation.
 - **PWA support** — installable as a Progressive Web App
 - **Dark mode** — automatic, with Lucide icons throughout
 - **SIGHUP restart** — graceful re-exec for zero-downtime updates
+- **Private notes** — compose and send private notes from the detail page, with draft persistence in localStorage
 
 ## Database
 
@@ -116,7 +139,7 @@ Uses SQLite (`db.sqlite3`). Migrations are in `db/migrations/`. SQL queries are 
 | `srv/static` | CSS, JavaScript, PWA manifest and icons |
 | `db` | SQLite open, migrations |
 | `db/dbgen` | sqlc-generated query code |
-| `freshdesk` | API client (read-only + note/status mutations) |
+| `freshdesk` | API client (tickets, notes, status, assignment) |
 | `cache` | SQLite-backed HTTP cache with ETag support |
 | `config` | DB-backed configuration with `.env` seeding |
 | `sprint` | Sprint date calculation from anchors |
