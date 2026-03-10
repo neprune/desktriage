@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,28 +83,21 @@ func (s *Server) fetchAllTicketCards(ctx context.Context) ([]TicketCard, map[int
 	if !ok {
 		var fetchErr error
 
-		// 1. Fetch my open+pending tickets via list filter.
-		myTickets, err := s.Freshdesk.ListTickets(ctx, url.Values{
-			"filter":   {"new_and_my_open"},
-			"per_page": {"100"},
-		})
+		// Build a status filter clause that includes all non-resolved,
+		// non-closed statuses (standard + custom like "Being Investigated").
+		statusFilter := s.activeStatusFilter(ctx)
+
+		// 1. Fetch my tickets in any active status.
+		myTickets, err := s.Freshdesk.FilterTickets(ctx,
+			fmt.Sprintf("agent_id:%d AND (%s)", s.AgentID, statusFilter))
 		if err != nil {
-			fetchErr = fmt.Errorf("list open tickets: %w", err)
+			fetchErr = fmt.Errorf("filter my tickets: %w", err)
 		}
 
 		if fetchErr == nil {
-			// 2. Fetch my pending tickets (not covered by new_and_my_open).
-			pendingTickets, err := s.Freshdesk.FilterTickets(ctx,
-				fmt.Sprintf("agent_id:%d AND status:3", s.AgentID))
-			if err != nil {
-				slog.Warn("search pending tickets", "error", err)
-			}
-
-			// 3. Fetch ALL unassigned unresolved tickets.
-			//    new_and_my_open only returns "new" (never-assigned) tickets;
-			//    this catches unassigned+pending, re-unassigned, etc.
+			// 2. Fetch ALL unassigned tickets in any active status.
 			unassignedTickets, err := s.Freshdesk.FilterTickets(ctx,
-				"agent_id:null AND (status:2 OR status:3)")
+				fmt.Sprintf("agent_id:null AND (%s)", statusFilter))
 			if err != nil {
 				slog.Warn("search unassigned tickets", "error", err)
 			}
@@ -112,7 +105,7 @@ func (s *Server) fetchAllTicketCards(ctx context.Context) ([]TicketCard, map[int
 			// Merge and deduplicate by ticket ID.
 			seen := make(map[int64]struct{})
 			var merged []freshdesk.Ticket
-			for _, batch := range [][]freshdesk.Ticket{myTickets, pendingTickets, unassignedTickets} {
+			for _, batch := range [][]freshdesk.Ticket{myTickets, unassignedTickets} {
 				for _, t := range batch {
 					if _, dup := seen[t.ID]; !dup {
 						seen[t.ID] = struct{}{}
@@ -525,6 +518,24 @@ func (s *Server) ensureAgentID(ctx context.Context) error {
 func truncate(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// activeStatusFilter returns a Freshdesk filter clause matching all statuses
+// that are not Resolved (4) or Closed (5). This includes standard Open (2)
+// and Pending (3) plus any custom statuses (e.g. "Being Investigated").
+// Falls back to "status:2 OR status:3" if status choices can't be loaded.
+func (s *Server) activeStatusFilter(ctx context.Context) string {
+	choices := s.loadStatusChoices(ctx)
+	var parts []string
+	for _, sc := range choices {
+		if sc.Value != 4 && sc.Value != 5 {
+			parts = append(parts, fmt.Sprintf("status:%d", sc.Value))
+		}
+	}
+	if len(parts) == 0 {
+		return "status:2 OR status:3"
+	}
+	return strings.Join(parts, " OR ")
 }
 
 // statusLabel maps a Freshdesk status code to a human-readable label
