@@ -377,12 +377,14 @@ window.DeskTriage = window.DeskTriage || {};
 
     // --- Navigation ---
     if (key === 'j' || key === 'ArrowDown') {
+      if (getCards().length === 0) return;
       e.preventDefault();
       setFocus(focusedIndex + 1);
       return;
     }
 
     if (key === 'k' || key === 'ArrowUp') {
+      if (getCards().length === 0) return;
       e.preventDefault();
       if (focusedIndex <= 0) {
         setFocus(0);

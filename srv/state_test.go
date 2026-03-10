@@ -38,6 +38,20 @@ func newTestServer(t *testing.T) *Server {
 	}
 }
 
+// newTestServerWithFreshdesk creates a test server backed by a mock Freshdesk
+// API. The handler is called for every request to the mock server.
+func newTestServerWithFreshdesk(t *testing.T, handler http.HandlerFunc) *Server {
+	t.Helper()
+	s := newTestServer(t)
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+	s.Freshdesk = freshdesk.NewClient(freshdesk.Config{
+		BaseURL: ts.URL,
+		APIKey:  "testkey",
+	})
+	return s
+}
+
 // seedCachedTicket puts a fake ticket in the dashboard cache.
 func seedCachedTicket(t *testing.T, s *Server, ticketID int64) {
 	t.Helper()
@@ -57,6 +71,51 @@ func seedCachedTicket(t *testing.T, s *Server, ticketID int64) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// seedCachedTicketWithResponder puts a fake ticket with a specific responder in the dashboard cache.
+func seedCachedTicketWithResponder(t *testing.T, s *Server, ticketID, responderID int64) {
+	t.Helper()
+	tickets := []freshdesk.Ticket{{
+		ID:          ticketID,
+		Subject:     "Test ticket",
+		Status:      2,
+		ResponderID: responderID,
+		UpdatedAt:   time.Now().Add(-1 * time.Hour),
+	}}
+	data, _ := json.Marshal(tickets)
+	_, err := s.DB.ExecContext(context.Background(),
+		`INSERT OR REPLACE INTO api_cache (cache_key, response_body, cached_at, max_age_secs) VALUES (?, ?, ?, ?)`,
+		"tickets:dashboard", string(data), time.Now().UTC().Format(time.RFC3339), 3600)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// serveFakeTicket returns true and writes a JSON ticket response if the
+// request is a GET for /api/v2/tickets/{id}. Used as a fallback in test mocks
+// so buildTicketCard can fetch the ticket after cache invalidation.
+func serveFakeTicket(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != "GET" {
+		return false
+	}
+	// Match /api/v2/tickets/<digits> but not /api/v2/tickets/<digits>/...
+	path := r.URL.Path
+	const prefix = "/api/v2/tickets/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	rest := path[len(prefix):]
+	if rest == "" || strings.Contains(rest, "/") {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(freshdesk.Ticket{
+		ID:      12345,
+		Subject: "Test ticket",
+		Status:  2,
+	})
+	return true
 }
 
 func putState(s *Server, ticketID, body string) *httptest.ResponseRecorder {
@@ -302,6 +361,243 @@ func TestUpdateState_FromTicket_Priority(t *testing.T) {
 	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
 	if st.Priority != 2 {
 		t.Errorf("priority: want 2, got %d", st.Priority)
+	}
+}
+
+func TestUpdateState_TodayAssignsTicket(t *testing.T) {
+	var assignCalled bool
+	var assignedResponder float64
+
+	s := newTestServerWithFreshdesk(t, func(w http.ResponseWriter, r *http.Request) {
+		// /api/v2/agents/me — return a fake agent for ensureAgentID
+		if r.URL.Path == "/api/v2/agents/me" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(freshdesk.Agent{
+				ID:      999,
+				Contact: freshdesk.AgentContact{Name: "Test Agent"},
+			})
+			return
+		}
+		// PUT /api/v2/tickets/12345 — the assign call
+		if r.Method == "PUT" && r.URL.Path == "/api/v2/tickets/12345" {
+			assignCalled = true
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			if v, ok := body["responder_id"]; ok {
+				assignedResponder, _ = v.(float64)
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !serveFakeTicket(w, r) {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	seedCachedTicket(t, s, 12345)
+
+	rr := putState(s, "12345", "field=today&value=1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if !assignCalled {
+		t.Error("expected Freshdesk assign API call when marking today, but it was not called")
+	}
+	if assignedResponder != 999 {
+		t.Errorf("responder_id = %v, want 999", assignedResponder)
+	}
+
+	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
+	if st.Today != 1 {
+		t.Errorf("today: want 1, got %d", st.Today)
+	}
+}
+
+func TestUpdateState_UntodayDoesNotUnassign(t *testing.T) {
+	var putCalls int
+
+	s := newTestServerWithFreshdesk(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/agents/me" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(freshdesk.Agent{
+				ID:      999,
+				Contact: freshdesk.AgentContact{Name: "Test Agent"},
+			})
+			return
+		}
+		if r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/api/v2/tickets/") {
+			putCalls++
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !serveFakeTicket(w, r) {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	seedCachedTicket(t, s, 12345)
+
+	// Mark as today (triggers assign).
+	putState(s, "12345", "field=today&value=1")
+	assignCalls := putCalls
+
+	// Unmark today — should NOT trigger another PUT.
+	putState(s, "12345", "field=today&value=0")
+
+	if putCalls != assignCalls {
+		t.Errorf("unmarking today triggered %d additional Freshdesk PUT calls, want 0", putCalls-assignCalls)
+	}
+
+	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
+	if st.Today != 0 {
+		t.Errorf("today: want 0, got %d", st.Today)
+	}
+}
+
+func TestUpdateState_TodayToggleOnAssigns(t *testing.T) {
+	var assignCalled bool
+
+	s := newTestServerWithFreshdesk(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/agents/me" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(freshdesk.Agent{
+				ID:      999,
+				Contact: freshdesk.AgentContact{Name: "Test Agent"},
+			})
+			return
+		}
+		if r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/api/v2/tickets/") {
+			assignCalled = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !serveFakeTicket(w, r) {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	seedCachedTicket(t, s, 12345)
+
+	// Toggle on (ticket starts with today=0, so toggle should set it to 1).
+	rr := putState(s, "12345", "field=today&value=toggle")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if !assignCalled {
+		t.Error("expected assign call on toggle to today=1")
+	}
+
+	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
+	if st.Today != 1 {
+		t.Errorf("today: want 1, got %d", st.Today)
+	}
+}
+
+func TestUpdateState_TodayToggleOffDoesNotUnassign(t *testing.T) {
+	var putCalls int
+
+	s := newTestServerWithFreshdesk(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/agents/me" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(freshdesk.Agent{
+				ID:      999,
+				Contact: freshdesk.AgentContact{Name: "Test Agent"},
+			})
+			return
+		}
+		if r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/api/v2/tickets/") {
+			putCalls++
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !serveFakeTicket(w, r) {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	seedCachedTicket(t, s, 12345)
+
+	// Set today=1 first (triggers assign).
+	putState(s, "12345", "field=today&value=1")
+	callsAfterOn := putCalls
+
+	// Toggle off (today=1 -> 0) — should NOT call assign/unassign.
+	putState(s, "12345", "field=today&value=toggle")
+
+	if putCalls != callsAfterOn {
+		t.Errorf("toggle off triggered %d additional Freshdesk PUT calls, want 0", putCalls-callsAfterOn)
+	}
+
+	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
+	if st.Today != 0 {
+		t.Errorf("today: want 0, got %d", st.Today)
+	}
+}
+
+func TestUpdateState_TodaySkipsAssignIfAlreadyAssigned(t *testing.T) {
+	var putCalls int
+
+	s := newTestServerWithFreshdesk(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/agents/me" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(freshdesk.Agent{
+				ID:      999,
+				Contact: freshdesk.AgentContact{Name: "Test Agent"},
+			})
+			return
+		}
+		if r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/api/v2/tickets/") {
+			putCalls++
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if !serveFakeTicket(w, r) {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	// Seed with ticket already assigned to agent 999.
+	seedCachedTicketWithResponder(t, s, 12345, 999)
+	// Ensure AgentID is resolved before the test so ensureAgentID sets it.
+	s.AgentID = 999
+
+	rr := putState(s, "12345", "field=today&value=1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if putCalls != 0 {
+		t.Errorf("expected 0 Freshdesk PUT calls (already assigned), got %d", putCalls)
+	}
+
+	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
+	if st.Today != 1 {
+		t.Errorf("today: want 1, got %d", st.Today)
+	}
+}
+
+func TestUpdateState_TodayAssignFailureNonFatal(t *testing.T) {
+	s := newTestServerWithFreshdesk(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/agents/me" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(freshdesk.Agent{
+				ID:      999,
+				Contact: freshdesk.AgentContact{Name: "Test Agent"},
+			})
+			return
+		}
+		// Simulate Freshdesk API failure.
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"description":"Server error"}`))
+	})
+	seedCachedTicket(t, s, 12345)
+
+	// Should still succeed — assign failure is non-fatal.
+	rr := putState(s, "12345", "field=today&value=1")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("got %d: %s, want 200 (assign failure should be non-fatal)", rr.Code, rr.Body.String())
+	}
+
+	st, _ := s.Queries.GetTicketState(context.Background(), 12345)
+	if st.Today != 1 {
+		t.Errorf("today: want 1, got %d", st.Today)
 	}
 }
 

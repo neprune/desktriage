@@ -449,6 +449,78 @@ func TestCreateNote(t *testing.T) {
 	}
 }
 
+func TestAssignTicket(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v2/tickets/100" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var reqBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		responderID, ok := reqBody["responder_id"]
+		if !ok {
+			t.Fatal("request body missing 'responder_id' field")
+		}
+		// JSON numbers decode as float64.
+		if responderID != float64(500) {
+			t.Errorf("responder_id = %v, want 500", responderID)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	err := client.AssignTicket(context.Background(), 100, 500)
+	if err != nil {
+		t.Fatalf("AssignTicket returned error: %v", err)
+	}
+}
+
+func TestUnassignTicket(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v2/tickets/100" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		var reqBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		responderID, ok := reqBody["responder_id"]
+		if !ok {
+			t.Fatal("request body missing 'responder_id' field")
+		}
+		if responderID != nil {
+			t.Errorf("responder_id = %v, want nil", responderID)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	err := client.UnassignTicket(context.Background(), 100)
+	if err != nil {
+		t.Fatalf("UnassignTicket returned error: %v", err)
+	}
+}
+
+func TestAssignTicket_APIError(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"description":"Access denied"}`))
+	})
+
+	err := client.AssignTicket(context.Background(), 100, 500)
+	if err == nil {
+		t.Fatal("expected error for 403 response, got nil")
+	}
+	if !strings.Contains(err.Error(), "403") {
+		t.Errorf("error message %q does not contain 403", err.Error())
+	}
+}
+
 func TestListTicketsPassesParams(t *testing.T) {
 	// Verify that user-supplied query parameters are forwarded.
 	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {

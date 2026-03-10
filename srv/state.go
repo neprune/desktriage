@@ -59,6 +59,10 @@ func (s *Server) HandleUpdateState(w http.ResponseWriter, r *http.Request) {
 			existing.Today = 1
 			existing.ReviewAfter = nil // clear any pending review date
 			existing.DeferredAt = nil
+			// Assign ticket to current agent on Freshdesk.
+			if err := s.assignToSelf(r.Context(), ticketID); err != nil {
+				slog.Error("assign ticket on today", "ticket_id", ticketID, "error", err)
+			}
 		} else {
 			existing.Today = 0
 		}
@@ -280,6 +284,27 @@ func (s *Server) buildTicketCard(ctx context.Context, ticketID int64) (*TicketCa
 	}
 
 	return card, nil
+}
+
+// assignToSelf assigns the ticket to the current agent on Freshdesk.
+// It skips the API call if the ticket is already assigned to us.
+func (s *Server) assignToSelf(ctx context.Context, ticketID int64) error {
+	if s.Freshdesk == nil {
+		return nil
+	}
+	if err := s.ensureAgentID(ctx); err != nil {
+		return err
+	}
+	// Skip if already assigned to us.
+	if t := s.findCachedTicket(ticketID); t != nil && t.ResponderID == s.AgentID {
+		return nil
+	}
+	if err := s.Freshdesk.AssignTicket(ctx, ticketID, s.AgentID); err != nil {
+		return err
+	}
+	_ = s.Cache.Delete(ctx, fmt.Sprintf("ticket:%d", ticketID))
+	_ = s.Cache.Delete(ctx, "tickets:dashboard")
+	return nil
 }
 
 // nextWeekday returns the next Mon–Fri after now, truncated to midnight.

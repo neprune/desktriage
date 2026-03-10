@@ -420,6 +420,24 @@ func (c *Client) UpdateTicketStatus(ctx context.Context, ticketID int64, status 
 	return nil
 }
 
+// AssignTicket sets the assigned agent on a Freshdesk ticket.
+func (c *Client) AssignTicket(ctx context.Context, ticketID, agentID int64) error {
+	payload := map[string]any{"responder_id": agentID}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("freshdesk: marshalling assign payload: %w", err)
+	}
+
+	path := fmt.Sprintf("/api/v2/tickets/%d", ticketID)
+	resp, err := c.doRequest(ctx, http.MethodPut, path, strings.NewReader(string(data)))
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
 // UnassignTicket removes the assigned agent from a Freshdesk ticket.
 func (c *Client) UnassignTicket(ctx context.Context, ticketID int64) error {
 	payload := map[string]any{"responder_id": nil}
