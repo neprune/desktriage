@@ -3,8 +3,11 @@
 {{define "content"}}
 <div class="today">
   <header class="page-header">
-    <h1><i data-lucide="star"></i> Today</h1>
-    <p class="page-subtitle">{{len .Tickets}} tickets for today</p>
+    <div class="page-header-row">
+      <h1><i data-lucide="star"></i> Today</h1>
+      {{template "filter-bar"}}
+    </div>
+    <p class="page-subtitle"><span id="count-total">{{len .Tickets}}</span> tickets for today</p>
   </header>
 
   {{if .Tickets}}

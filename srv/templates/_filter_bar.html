@@ -1,0 +1,20 @@
+{{define "filter-bar"}}
+<div class="filter-bar" id="filter-bar">
+  <button class="filter-chip" type="button" data-filter="status">
+    Status: <span class="filter-chip-value">any</span>
+    <i data-lucide="chevron-down"></i>
+  </button>
+  <button class="filter-chip" type="button" data-filter="company">
+    Company: <span class="filter-chip-value">any</span>
+    <i data-lucide="chevron-down"></i>
+  </button>
+  <button class="filter-chip" type="button" data-filter="blocked">
+    Blocked: <span class="filter-chip-value">any</span>
+    <i data-lucide="chevron-down"></i>
+  </button>
+  <button class="filter-chip filter-chip-reset" type="button" data-filter-reset hidden title="Reset filters">
+    <i data-lucide="x"></i>
+  </button>
+</div>
+<div id="filter-popover" class="filter-popover" hidden></div>
+{{end}}

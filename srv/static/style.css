@@ -229,6 +229,89 @@ main {
 .dashboard-header { margin-bottom: 1.5rem; }
 .dashboard-header h1 { font-size: 1.5rem; font-weight: 700; }
 .dashboard-subtitle { color: var(--text-secondary); font-size: 0.9rem; }
+.dashboard-header-row,
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.2rem;
+  flex-wrap: wrap;
+}
+
+/* === Filter bar (chip row + popover) === */
+.filter-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  cursor: pointer;
+  user-select: none;
+  font-family: inherit;
+  line-height: 1.2;
+}
+.filter-chip:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.filter-chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.filter-chip i { width: 13px; height: 13px; }
+.filter-chip-value { font-weight: 500; }
+.filter-chip-reset {
+  padding: 0.25rem 0.4rem;
+  color: var(--text-secondary);
+}
+.filter-chip-reset:hover { color: var(--danger); border-color: var(--danger); }
+
+.filter-popover {
+  position: absolute;
+  z-index: 50;
+  min-width: 180px;
+  max-width: 280px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px var(--shadow-card);
+  padding: 0.4rem 0;
+}
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.filter-option:hover { background: var(--bg-muted); }
+.filter-option input { margin: 0; }
+.filter-option-any {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+  padding-bottom: 0.45rem;
+}
+.filter-empty {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.ticket-card.is-filtered-out { display: none; }
 
 .ticket-section { margin-bottom: 2rem; }
 .ticket-section h2 {

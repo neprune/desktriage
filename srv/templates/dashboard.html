@@ -3,13 +3,16 @@
 {{define "content"}}
 <div class="dashboard">
   <header class="dashboard-header">
-    <h1>Dashboard</h1>
-    <p class="dashboard-subtitle">{{.TotalCount}} tickets &middot; {{.TodayCount}} flagged for today{{if .ReviewNowCount}} &middot; {{.ReviewNowCount}} due for review{{end}}</p>
+    <div class="dashboard-header-row">
+      <h1>Dashboard</h1>
+      {{template "filter-bar"}}
+    </div>
+    <p class="dashboard-subtitle"><span id="count-total">{{.TotalCount}}</span> tickets &middot; <span id="count-today">{{.TodayCount}}</span> flagged for today{{if .ReviewNowCount}} &middot; <span id="count-review">{{.ReviewNowCount}}</span> due for review{{end}}</p>
   </header>
 
   {{if .ReviewNowTickets}}
   <section class="ticket-section section-review-now">
-    <h2><i data-lucide="calendar"></i> Review Now ({{len .ReviewNowTickets}})</h2>
+    <h2><i data-lucide="calendar"></i> Review Now (<span class="section-count">{{len .ReviewNowTickets}}</span>)</h2>
     <div class="ticket-list">
       {{range .ReviewNowTickets}}{{template "ticket-card" .}}{{end}}
     </div>
@@ -17,7 +20,7 @@
   {{end}}
 
   <section class="ticket-section">
-    <h2>My Tickets ({{len .AssignedTickets}})</h2>
+    <h2>My Tickets (<span class="section-count">{{len .AssignedTickets}}</span>)</h2>
     {{if .AssignedTickets}}
     <div class="ticket-list">
       {{range .AssignedTickets}}{{template "ticket-card" .}}{{end}}
@@ -28,7 +31,7 @@
   </section>
 
   <section class="ticket-section">
-    <h2>Unassigned ({{len .UnassignedTickets}})</h2>
+    <h2>Unassigned (<span class="section-count">{{len .UnassignedTickets}}</span>)</h2>
     {{if .UnassignedTickets}}
     <div class="ticket-list">
       {{range .UnassignedTickets}}{{template "ticket-card" .}}{{end}}
@@ -40,7 +43,7 @@
 
   {{if .ForLaterTickets}}
   <section class="ticket-section section-for-later section-collapsible" data-section-id="for-later">
-    <h2><i data-lucide="timer"></i> For Later ({{len .ForLaterTickets}}) <i data-lucide="chevron-down" class="collapse-chevron"></i></h2>
+    <h2><i data-lucide="timer"></i> For Later (<span class="section-count">{{len .ForLaterTickets}}</span>) <i data-lucide="chevron-down" class="collapse-chevron"></i></h2>
     <div class="ticket-list">
       {{range .ForLaterTickets}}{{template "ticket-card" .}}{{end}}
     </div>
@@ -49,7 +52,7 @@
 
   {{if .HistoricTickets}}
   <section class="ticket-section section-historic section-collapsible" data-section-id="historic">
-    <h2><i data-lucide="archive"></i> Historic ({{len .HistoricTickets}}) <i data-lucide="chevron-down" class="collapse-chevron"></i></h2>
+    <h2><i data-lucide="archive"></i> Historic (<span class="section-count">{{len .HistoricTickets}}</span>) <i data-lucide="chevron-down" class="collapse-chevron"></i></h2>
     <div class="ticket-list">
       {{range .HistoricTickets}}{{template "ticket-card" .}}{{end}}
     </div>

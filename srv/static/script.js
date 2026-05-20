@@ -1134,6 +1134,301 @@ window.DeskTriage = window.DeskTriage || {};
   });
 })();
 
+// === Ticket list filter bar ==================================================
+(function() {
+  var bar = document.getElementById('filter-bar');
+  var popover = document.getElementById('filter-popover');
+  if (!bar || !popover) return;
+
+  var STORAGE_KEY = 'desktriage:filters';
+  var defaults = {
+    status: 'any',    // 'any' or array of status codes (strings)
+    company: 'any',   // 'any' or array of company names
+    blocked: 'any'    // 'any' | 'only' | 'none'
+  };
+
+  var blockedLabels = { any: 'any', only: 'blocked only', none: 'hide blocked' };
+
+  var state = Object.assign({}, defaults, loadState());
+
+  function loadState() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch(e) { return {}; }
+  }
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+  }
+  function isDefault(key) {
+    var d = defaults[key], v = state[key];
+    if (Array.isArray(v)) return false;
+    return v === d;
+  }
+  function anyActive() {
+    return Object.keys(defaults).some(function(k) { return !isDefault(k); });
+  }
+
+  // ---- Card visibility ------------------------------------------------------
+
+  function cardVisible(card) {
+    if (Array.isArray(state.status)) {
+      if (state.status.indexOf(card.getAttribute('data-status')) === -1) return false;
+    }
+    if (Array.isArray(state.company)) {
+      if (state.company.indexOf(card.getAttribute('data-company')) === -1) return false;
+    }
+    var b = card.getAttribute('data-blocked') === '1';
+    if (state.blocked === 'only' && !b) return false;
+    if (state.blocked === 'none' && b) return false;
+    return true;
+  }
+
+  function apply() {
+    document.querySelectorAll('.ticket-card').forEach(function(c) {
+      c.classList.toggle('is-filtered-out', !cardVisible(c));
+    });
+    recomputeCounts();
+    updateChips();
+  }
+
+  function recomputeCounts() {
+    // Per-section counts.
+    document.querySelectorAll('.ticket-section').forEach(function(section) {
+      var visible = 0;
+      section.querySelectorAll('.ticket-list > .ticket-card').forEach(function(c) {
+        if (!c.classList.contains('is-filtered-out')) visible++;
+      });
+      var countEl = section.querySelector('.section-count');
+      if (countEl) countEl.textContent = visible;
+    });
+    // Subtitle counts: total (unique IDs, excluding review-now duplicates).
+    var totalIds = new Set();
+    document.querySelectorAll('.ticket-section:not(.section-review-now) .ticket-list > .ticket-card, .today .ticket-list > .ticket-card').forEach(function(c) {
+      if (c.classList.contains('is-filtered-out')) return;
+      totalIds.add(c.id);
+    });
+    var totalEl = document.getElementById('count-total');
+    if (totalEl) totalEl.textContent = totalIds.size;
+
+    var todayEl = document.getElementById('count-today');
+    if (todayEl) {
+      var todayCount = 0;
+      document.querySelectorAll('.ticket-section:not(.section-review-now) .ticket-list > .ticket-card').forEach(function(c) {
+        if (c.classList.contains('is-filtered-out')) return;
+        if (c.querySelector('.badge-today')) todayCount++;
+      });
+      todayEl.textContent = todayCount;
+    }
+
+    var reviewEl = document.getElementById('count-review');
+    if (reviewEl) {
+      var rv = 0;
+      document.querySelectorAll('.section-review-now .ticket-list > .ticket-card').forEach(function(c) {
+        if (!c.classList.contains('is-filtered-out')) rv++;
+      });
+      reviewEl.textContent = rv;
+    }
+  }
+
+  // ---- Chip labels / active state ------------------------------------------
+
+  function chipLabel(key) {
+    var v = state[key];
+    if (key === 'blocked') return blockedLabels[v] || 'any';
+    if (Array.isArray(v)) {
+      if (v.length === 0) return 'none';
+      if (key === 'status') {
+        var names = v.map(function(code) {
+          var card = document.querySelector('.ticket-card[data-status="' + code + '"]');
+          return card ? (card.getAttribute('data-status-label') || code) : code;
+        });
+        return names.length > 2 ? names[0] + ' +' + (names.length - 1) : names.join(', ');
+      }
+      if (key === 'company') {
+        return v.length > 2 ? v[0] + ' +' + (v.length - 1) : v.join(', ');
+      }
+    }
+    return 'any';
+  }
+
+  function updateChips() {
+    bar.querySelectorAll('.filter-chip[data-filter]').forEach(function(chip) {
+      var key = chip.getAttribute('data-filter');
+      var valEl = chip.querySelector('.filter-chip-value');
+      if (valEl) valEl.textContent = chipLabel(key);
+      var active = !isDefault(key);
+      chip.classList.toggle('is-active', active);
+    });
+    var reset = bar.querySelector('[data-filter-reset]');
+    if (reset) reset.hidden = !anyActive();
+  }
+
+  // ---- Popover -------------------------------------------------------------
+
+  var activeChip = null;
+
+  function uniqueCompanies() {
+    var seen = {};
+    var out = [];
+    document.querySelectorAll('.ticket-card').forEach(function(c) {
+      var name = c.getAttribute('data-company') || '';
+      if (name && !seen[name]) { seen[name] = true; out.push(name); }
+    });
+    out.sort();
+    return out;
+  }
+
+  function uniqueStatuses() {
+    var seen = {};
+    var out = [];
+    document.querySelectorAll('.ticket-card').forEach(function(c) {
+      var code = c.getAttribute('data-status');
+      var label = c.getAttribute('data-status-label') || code;
+      if (code && !seen[code]) { seen[code] = true; out.push({ code: code, label: label }); }
+    });
+    out.sort(function(a, b) { return parseInt(a.code, 10) - parseInt(b.code, 10); });
+    return out;
+  }
+
+  function buildPopover(key) {
+    popover.innerHTML = '';
+
+    if (key === 'blocked') {
+      buildRadio(['any', 'only', 'none'], blockedLabels);
+    } else if (key === 'status') {
+      var statuses = uniqueStatuses();
+      buildCheckboxList(statuses.map(function(s) { return { value: s.code, label: s.label }; }));
+    } else if (key === 'company') {
+      buildCheckboxList(uniqueCompanies().map(function(c) { return { value: c, label: c }; }));
+    }
+  }
+
+  function buildRadio(values, labels) {
+    values.forEach(function(v) {
+      var label = document.createElement('label');
+      label.className = 'filter-option';
+      var input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'filter-radio';
+      input.value = v;
+      input.checked = state[activeChip.getAttribute('data-filter')] === v;
+      input.addEventListener('change', function() {
+        state[activeChip.getAttribute('data-filter')] = v;
+        saveState();
+        apply();
+      });
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' ' + labels[v]));
+      popover.appendChild(label);
+    });
+  }
+
+  function buildCheckboxList(options) {
+    var key = activeChip.getAttribute('data-filter');
+    var current = state[key];
+    var allSelected = current === 'any';
+
+    // "Any" / clear option.
+    var anyLabel = document.createElement('label');
+    anyLabel.className = 'filter-option filter-option-any';
+    var anyInput = document.createElement('input');
+    anyInput.type = 'radio';
+    anyInput.name = 'filter-any';
+    anyInput.checked = allSelected;
+    anyInput.addEventListener('change', function() {
+      state[key] = 'any';
+      saveState();
+      buildPopover(key);
+      apply();
+    });
+    anyLabel.appendChild(anyInput);
+    anyLabel.appendChild(document.createTextNode(' Any'));
+    popover.appendChild(anyLabel);
+
+    if (options.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'filter-empty';
+      empty.textContent = 'No options available';
+      popover.appendChild(empty);
+      return;
+    }
+
+    options.forEach(function(opt) {
+      var label = document.createElement('label');
+      label.className = 'filter-option';
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.value = opt.value;
+      input.checked = !allSelected && current.indexOf(opt.value) !== -1;
+      input.addEventListener('change', function() {
+        var cur = state[key] === 'any' ? [] : state[key].slice();
+        if (input.checked) {
+          if (cur.indexOf(opt.value) === -1) cur.push(opt.value);
+        } else {
+          var idx = cur.indexOf(opt.value);
+          if (idx !== -1) cur.splice(idx, 1);
+        }
+        // Promote back to 'any' when every option is selected, or when none.
+        if (cur.length === 0 || cur.length === options.length) {
+          state[key] = 'any';
+        } else {
+          state[key] = cur;
+        }
+        saveState();
+        apply();
+      });
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(' ' + opt.label));
+      popover.appendChild(label);
+    });
+  }
+
+  function openPopover(chip) {
+    activeChip = chip;
+    buildPopover(chip.getAttribute('data-filter'));
+    popover.hidden = false;
+    var rect = chip.getBoundingClientRect();
+    popover.style.top = (window.scrollY + rect.bottom + 4) + 'px';
+    var left = window.scrollX + rect.left;
+    var maxLeft = window.scrollX + window.innerWidth - popover.offsetWidth - 8;
+    if (left > maxLeft) left = maxLeft;
+    popover.style.left = left + 'px';
+  }
+
+  function closePopover() {
+    popover.hidden = true;
+    activeChip = null;
+  }
+
+  bar.querySelectorAll('.filter-chip[data-filter]').forEach(function(chip) {
+    chip.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (activeChip === chip) { closePopover(); return; }
+      openPopover(chip);
+    });
+  });
+
+  var resetBtn = bar.querySelector('[data-filter-reset]');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      state = Object.assign({}, defaults);
+      saveState();
+      closePopover();
+      apply();
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (popover.hidden) return;
+    if (popover.contains(e.target)) return;
+    closePopover();
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && !popover.hidden) closePopover();
+  });
+
+  apply();
+})();
+
 // Register service worker for PWA installability
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js');
