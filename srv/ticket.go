@@ -659,10 +659,19 @@ func (s *Server) fetchNavCounts(ctx context.Context) (total, today int) {
 		return len(tickets), 0
 	}
 
+	// Only count Today flags for tickets that are still active. Stale
+	// flags on resolved/closed tickets must not inflate the badge.
+	activeIDs := make(map[int64]struct{}, len(tickets))
+	for _, t := range tickets {
+		activeIDs[t.ID] = struct{}{}
+	}
+
 	total = len(tickets)
 	for _, st := range dbStates {
 		if st.Today != 0 {
-			today++
+			if _, ok := activeIDs[st.TicketID]; ok {
+				today++
+			}
 		}
 	}
 
