@@ -659,6 +659,8 @@ window.DeskTriage = window.DeskTriage || {};
     ticketStateCommands,
     // Set status to X (when a ticket is in context)
     statusCommands,
+    // Assign / Unassign focused card (skips ticket detail — handled there by the sidebar panel)
+    assignCommand,
     // Handover (when focused ticket is assigned to current agent)
     handoverCommand
   ];
@@ -799,6 +801,46 @@ window.DeskTriage = window.DeskTriage || {};
     return [{
       label: 'Handover',
       action: function() { showHandoverDialog(ticketId); }
+    }];
+  }
+
+  // -- Assign / Unassign command source --------------------------------------
+
+  function assignCommand(q) {
+    var ticketId, assigned;
+
+    if (isDetailPage()) {
+      ticketId = getContextTicketId();
+      if (!ticketId) return [];
+      // The Assignment panel in the sidebar renders an unassign button when
+      // assigned, an assign button otherwise; read that to know current state.
+      var sidebar = document.querySelector('.ticket-detail-sidebar');
+      if (!sidebar) return [];
+      if (sidebar.querySelector('button[hx-post$="/unassign"]')) {
+        assigned = true;
+      } else if (sidebar.querySelector('button[hx-post$="/assign"]')) {
+        assigned = false;
+      } else {
+        return [];
+      }
+    } else {
+      var card = getFocusedCard();
+      if (!card) return [];
+      ticketId = card.id.replace('ticket-', '');
+      assigned = card.hasAttribute('data-assigned');
+    }
+
+    var label = assigned ? 'Unassign' : 'Assign to me';
+    var lower = q.toLowerCase();
+    if (lower !== '' && label.toLowerCase().indexOf(lower) === -1) return [];
+    return [{
+      label: label,
+      action: function() {
+        if (assigned && !window.confirm('Unassign this ticket?')) return;
+        htmx.ajax('POST', '/ticket/' + ticketId + '/' + (assigned ? 'unassign' : 'assign'), {
+          swap: 'none'
+        });
+      }
     }];
   }
 

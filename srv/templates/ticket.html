@@ -169,6 +169,20 @@
         {{template "freshdesk-status" .FreshdeskStatusData}}
       </div>
       {{end}}
+      <div class="state-panel">
+        <h3 class="state-panel-title">Assignment</h3>
+        <div class="state-row">
+          <label class="state-label"><i data-lucide="user"></i> {{if .IsAssignedToMe}}Assigned to you{{else}}Unassigned{{end}}</label>
+          {{if .IsAssignedToMe}}
+          <button class="btn btn-state"
+                  hx-post="/ticket/{{.ID}}/unassign"
+                  hx-confirm="Unassign this ticket?">Unassign</button>
+          {{else}}
+          <button class="btn btn-state btn-state-active"
+                  hx-post="/ticket/{{.ID}}/assign">Assign to me</button>
+          {{end}}
+        </div>
+      </div>
       <div id="ticket-state">
         {{template "ticket-state" .}}
       </div>

@@ -14,6 +14,20 @@
       {{if .Note}}<span title="{{.Note}}"><i data-lucide="sticky-note"></i></span>{{end}}
     </span>
     <span class="ticket-actions">
+      {{if .IsAssigned}}
+      <button class="btn-icon btn-unassign"
+              title="Unassign from me"
+              hx-post="/ticket/{{.ID}}/unassign"
+              hx-confirm="Unassign this ticket?"
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="user-minus"></i></button>
+      {{else}}
+      <button class="btn-icon btn-assign"
+              title="Assign to me"
+              hx-post="/ticket/{{.ID}}/assign"
+              hx-target="#ticket-{{.ID}}"
+              hx-swap="outerHTML"><i data-lucide="user-plus"></i></button>
+      {{end}}
       <button class="btn-icon{{if .Today}} active{{end}}"
               title="{{if .Today}}Remove from today{{else}}Flag for today{{end}}"
               hx-put="/ticket/{{.ID}}/state"

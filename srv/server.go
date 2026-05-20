@@ -101,6 +101,8 @@ func (s *Server) ServeWithContext(ctx context.Context, addr string) error {
 	mux.HandleFunc("GET /ticket/{id}/preview", s.HandleTicketPreview)
 	mux.HandleFunc("POST /ticket/{id}/note", s.HandleAddNote)
 	mux.HandleFunc("POST /ticket/{id}/handover", s.HandleHandover)
+	mux.HandleFunc("POST /ticket/{id}/assign", s.HandleAssign)
+	mux.HandleFunc("POST /ticket/{id}/unassign", s.HandleUnassign)
 	mux.HandleFunc("POST /ticket/{id}/freshdesk-status", s.HandleUpdateFreshdeskStatus)
 	mux.HandleFunc("GET /api/status-choices", s.HandleStatusChoices)
 

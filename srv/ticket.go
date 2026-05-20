@@ -466,6 +466,53 @@ func (s *Server) HandleHandover(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---------------------------------------------------------------------------
+// Assign to self
+// ---------------------------------------------------------------------------
+
+// HandleAssign assigns a ticket to the current agent and reloads the page so
+// the ticket moves into the correct dashboard section.
+func (s *Server) HandleAssign(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	ticketID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid ticket ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.assignToSelf(r.Context(), ticketID); err != nil {
+		slog.Error("assign ticket", "ticket_id", ticketID, "error", err)
+		http.Error(w, "Failed to assign ticket", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
+}
+
+// HandleUnassign removes the responder from a ticket and reloads the page.
+func (s *Server) HandleUnassign(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	ticketID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid ticket ID", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.Freshdesk.UnassignTicket(ctx, ticketID); err != nil {
+		slog.Error("unassign ticket", "ticket_id", ticketID, "error", err)
+		http.Error(w, "Failed to unassign ticket", http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.Cache.Delete(ctx, fmt.Sprintf("ticket:%d", ticketID))
+	_ = s.Cache.Delete(ctx, "tickets:dashboard")
+
+	w.Header().Set("HX-Refresh", "true")
+	w.WriteHeader(http.StatusOK)
+}
+
+// ---------------------------------------------------------------------------
 // Ticket Preview (inline expand)
 // ---------------------------------------------------------------------------
 
