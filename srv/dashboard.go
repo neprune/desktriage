@@ -314,11 +314,13 @@ func (s *Server) fetchDashboardData(ctx context.Context) (*DashboardData, error)
 		})
 	}
 
+	// Internal priority: lower non-zero rank comes first (#1 > #2 > #3).
+	// Priority 0 means unqueued and sinks below any ranked ticket.
 	sort.Slice(assigned, func(i, j int) bool {
 		pi, pj := assigned[i].Priority, assigned[j].Priority
 		if pi > 0 && pj > 0 {
 			if pi != pj {
-				return pi > pj
+				return pi < pj
 			}
 			return assigned[i].UpdatedAt.After(assigned[j].UpdatedAt)
 		}

@@ -34,11 +34,21 @@ func (s *Server) HandleToday(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Sort by priority (higher first), then by last activity
+	// Sort by internal priority (lower non-zero rank first: #1 > #2 > #3),
+	// then by last activity. Unqueued (0) sinks below any prioritized ticket.
 	sort.Slice(todayCards, func(i, j int) bool {
 		pi, pj := todayCards[i].Priority, todayCards[j].Priority
-		if pi != pj {
-			return pi > pj
+		if pi > 0 && pj > 0 {
+			if pi != pj {
+				return pi < pj
+			}
+			return todayCards[i].UpdatedAt.After(todayCards[j].UpdatedAt)
+		}
+		if pi > 0 {
+			return true
+		}
+		if pj > 0 {
+			return false
 		}
 		return todayCards[i].UpdatedAt.After(todayCards[j].UpdatedAt)
 	})
